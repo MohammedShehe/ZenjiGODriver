@@ -13,11 +13,26 @@ class ResponsivePage extends StatelessWidget {
 
 class ZenjiLogo extends StatelessWidget {
   final double height;
-  const ZenjiLogo({super.key, this.height = 86});
+  const ZenjiLogo({super.key, this.height = 80});
+
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    return Image.asset(dark ? 'assets/logos/logo_dark.png' : 'assets/logos/logo_light.png', height: height, fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Text('ZenjiGO', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900)));
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final asset = isDark
+        ? 'assets/logos/logo_dark.png'
+        : 'assets/logos/logo_light.png';
+
+    return Image.asset(
+      asset,
+      height: height,
+      fit: BoxFit.contain,
+      alignment: Alignment.center,
+      errorBuilder: (_, __, ___) => Icon(
+        Icons.local_taxi_rounded,
+        size: height * .8,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    );
   }
 }
 
