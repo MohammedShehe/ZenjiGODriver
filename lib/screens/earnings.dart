@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:zenjigodriver/core/app_state.dart';
 
 import '../core/theme.dart';
 import '../core/widgets.dart';
@@ -16,7 +17,7 @@ class EarningsScreen extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'Earnings & Wallet',
+                  AppScope.of(context).t('Earnings & Wallet', 'Mapato na Pochi'),
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w900,
                       ),
@@ -36,7 +37,7 @@ class EarningsScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Available balance',
+                    AppScope.of(context).t('Available balance', 'Salio linalopatikana'),
                     style: TextStyle(
                       color: Theme.of(context)
                           .colorScheme
@@ -74,10 +75,10 @@ class EarningsScreen extends StatelessWidget {
           const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(child: _summary(context, 'Today', '48,500', '7 rides')),
+              Expanded(child: _summary(context, AppScope.of(context).t('Today', 'Leo'), '48,500', '7 rides')),
               const SizedBox(width: 10),
               Expanded(
-                child: _summary(context, 'This week', '268,000', '39 rides'),
+                child: _summary(context, AppScope.of(context).t('This week', 'Wiki hii'), '268,000', '39 rides'),
               ),
             ],
           ),
@@ -114,7 +115,7 @@ class EarningsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          const SectionTitle('Commission breakdown'),
+          SectionTitle(AppScope.of(context).t('Commission breakdown', 'Mgawanyo wa kamisheni')),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(18),
@@ -125,7 +126,7 @@ class EarningsScreen extends StatelessWidget {
                       Expanded(
                         child: _share(
                           context,
-                          'Driver share',
+                          AppScope.of(context).t('Driver share', 'Sehemu ya dereva'),
                           '80%',
                           'TZS 214,400',
                           ZenjiColors.green,
@@ -161,7 +162,7 @@ class EarningsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          const SectionTitle('Bonus & incentives'),
+          SectionTitle(AppScope.of(context).t('Bonus & incentives', 'Bonasi na motisha')),
           _incentive(
             context,
             'Weekend streak',
@@ -361,7 +362,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Choose payout method',
+                AppScope.of(context).t('Choose payout method', 'Chagua njia ya malipo'),
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w900,
                     ),
@@ -369,7 +370,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
               const SizedBox(height: 14),
               DropdownButtonFormField<String>(
                 initialValue: method,
-                items: ['M-Pesa', 'YAS', 'Bank transfer']
+                items: ['M-Pesa', 'YAS', AppScope.of(context).t('Bank transfer', 'Uhamisho wa benki')]
                     .map(
                       (item) => DropdownMenuItem(
                         value: item,
@@ -380,32 +381,32 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
                 onChanged: (value) {
                   if (value != null) setState(() => method = value);
                 },
-                decoration: const InputDecoration(
-                  labelText: 'Payout method',
+                decoration: InputDecoration(
+                  labelText: AppScope.of(context).t('Payout method', 'Njia ya malipo'),
                   prefixIcon: Icon(Icons.payments_outlined),
                 ),
               ),
               const SizedBox(height: 14),
-              if (method != 'Bank transfer') ...[
+              if (method != AppScope.of(context).t('Bank transfer', 'Uhamisho wa benki')) ...[
                 _field(
-                  'Phone number',
+                  AppScope.of(context).t('Phone number', 'Namba ya simu'),
                   'e.g. +255 7XX XXX XXX',
                   Icons.phone_outlined,
                 ),
                 const SizedBox(height: 14),
                 _field(
-                  'Account holder name',
-                  'Name registered on mobile money',
+                  AppScope.of(context).t('Account holder name', 'Jina la mmiliki wa akaunti'),
+                  AppScope.of(context).t('Name registered on mobile money', 'Jina lililosajiliwa kwenye pesa za simu'),
                   Icons.person_outline,
                 ),
               ] else ...[
-                _field('Bank name', 'e.g. CRDB Bank', Icons.account_balance),
+                _field(AppScope.of(context).t('Bank name', 'Jina la benki'), 'e.g. CRDB Bank', Icons.account_balance),
                 const SizedBox(height: 14),
-                _field('Account number', 'Bank account number', Icons.numbers),
+                _field(AppScope.of(context).t('Account number', 'Namba ya akaunti'), 'Bank account number', Icons.numbers),
                 const SizedBox(height: 14),
                 _field(
-                  'Account holder name',
-                  'Full legal name',
+                  AppScope.of(context).t('Account holder name', 'Jina la mmiliki wa akaunti'),
+                  AppScope.of(context).t('Full legal name', 'Jina kamili la kisheria'),
                   Icons.person_outline,
                 ),
                 const SizedBox(height: 14),
@@ -418,26 +419,26 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
               ],
               const SizedBox(height: 14),
               _field(
-                'Amount (TZS)',
-                'Minimum TZS 10,000',
+                AppScope.of(context).t('Amount (TZS)', 'Kiasi (TZS)'),
+                AppScope.of(context).t('Minimum TZS 10,000', 'Kiwango cha chini TZS 10,000'),
                 Icons.attach_money,
               ),
               const SizedBox(height: 18),
-              const Card(
+              Card(
                 child: Padding(
-                  padding: EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(16),
                   child: Column(
                     children: [
-                      KeyValueRow('Available', 'TZS 184,500'),
+                      KeyValueRow(AppScope.of(context).t('Available', 'Linapatikana'), 'TZS 184,500'),
                       KeyValueRow('Withdrawal fee', 'TZS 1,000'),
-                      KeyValueRow('Processing', 'Usually same day'),
+                      KeyValueRow(AppScope.of(context).t('Processing', 'Inachakatwa'), 'Usually same day'),
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: 18),
               LoadingButton(
-                label: 'Review withdrawal',
+                label: AppScope.of(context).t('Review withdrawal', 'Kagua uondoaji'),
                 icon: Icons.arrow_forward,
                 onPressed: () async {
                   if (!(formKey.currentState?.validate() ?? false)) return;
@@ -445,10 +446,10 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
                   if (!context.mounted) return;
                   final yes = await confirmDialog(
                     context,
-                    title: 'Confirm withdrawal',
+                    title: AppScope.of(context).t('Confirm withdrawal', 'Thibitisha uondoaji'),
                     message:
                         'Send the requested amount using $method? Verify the payout details before confirming.',
-                    confirm: 'Withdraw',
+                    confirm: AppScope.of(context).t('Withdraw', 'Toa'),
                   );
                   if (yes == true && context.mounted) {
                     toast(context, 'Withdrawal request submitted successfully.');

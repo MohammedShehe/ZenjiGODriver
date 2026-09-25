@@ -67,16 +67,95 @@ Future<void> fakeDelay([int ms = 650]) => Future.delayed(Duration(milliseconds: 
 
 void toast(BuildContext context, String message) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 
-Future<bool?> confirmDialog(BuildContext context, {required String title, required String message, String confirm = 'Confirm'}) => showDialog<bool>(context: context, builder: (context) => AlertDialog(title: Text(title), content: Text(message), actions: [TextButton(onPressed: ()=>Navigator.pop(context,false), child: const Text('Cancel')), FilledButton(onPressed: ()=>Navigator.pop(context,true), child: Text(confirm))]));
+Future<bool?> confirmDialog(
+  BuildContext context, {
+  required String title,
+  required String message,
+  String? confirm,
+  String? cancel,
+}) {
+  final s = AppScope.of(context);
+  return showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: Text(cancel ?? s.t('Cancel', 'Ghairi')),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: Text(confirm ?? s.t('Confirm', 'Thibitisha')),
+        ),
+      ],
+    ),
+  );
+}
 
 class ThemeLanguageRow extends StatelessWidget {
   const ThemeLanguageRow({super.key});
-  @override Widget build(BuildContext context) { final s=AppScope.of(context); final dark=Theme.of(context).brightness==Brightness.dark; return Row(mainAxisAlignment: MainAxisAlignment.end, children:[PopupMenuButton<bool>(tooltip:'Language', initialValue:s.isSwahili, onSelected:s.setLanguage, itemBuilder:(_)=>const[PopupMenuItem(value:false,child:Text('English')),PopupMenuItem(value:true,child:Text('Kiswahili'))], child:Pill(s.isSwahili?'Kiswahili':'English',icon:Icons.language)), const SizedBox(width:8), IconButton.filledTonal(onPressed:()=>s.toggleTheme(!dark), icon:Icon(dark?Icons.light_mode_rounded:Icons.dark_mode_rounded))]); }
+  @override
+  Widget build(BuildContext context) {
+    final s = AppScope.of(context);
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        PopupMenuButton<bool>(
+          tooltip: s.t('Language', 'Lugha'),
+          initialValue: s.isSwahili,
+          onSelected: s.setLanguage,
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: false, child: Text('English')),
+            PopupMenuItem(value: true, child: Text('Kiswahili')),
+          ],
+          child: Pill(s.isSwahili ? 'Kiswahili' : 'English', icon: Icons.language),
+        ),
+        const SizedBox(width: 8),
+        IconButton.filledTonal(
+          onPressed: () => s.toggleTheme(!dark),
+          icon: Icon(dark ? Icons.light_mode_rounded : Icons.dark_mode_rounded),
+        ),
+      ],
+    );
+  }
 }
 
 class KeyValueRow extends StatelessWidget {
-  final String label, value; const KeyValueRow(this.label,this.value,{super.key});
-  @override Widget build(BuildContext context)=>Padding(padding:const EdgeInsets.symmetric(vertical:7),child:Row(crossAxisAlignment:CrossAxisAlignment.start,children:[SizedBox(width:120,child:Text(label,style:TextStyle(color:Theme.of(context).colorScheme.onSurface.withValues(alpha:.62)))),Expanded(child:Text(value,style:const TextStyle(fontWeight:FontWeight.w700))) ]));
+  final String label, value;
+  const KeyValueRow(this.label, this.value, {super.key});
+  @override
+  Widget build(BuildContext context) {
+    final isNarrow = MediaQuery.of(context).size.width < 360;
+    if (isNarrow) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 7),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .62), fontSize: 13)),
+            const SizedBox(height: 2),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
+          ],
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .62))),
+          ),
+          Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w700))),
+        ],
+      ),
+    );
+  }
 }
 
 class EmptyState extends StatelessWidget {

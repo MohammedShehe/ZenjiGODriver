@@ -52,7 +52,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   void next() {
     if (!(formKeys[step].currentState?.validate() ?? true)) return;
     if (step == 0 && (!phoneVerified || !emailVerified)) {
-      toast(context, 'Verify your phone number and email before continuing.');
+      toast(context, AppScope.of(context).t('Verify your phone number and email before continuing.', 'Thibitisha namba ya simu na barua pepe kabla ya kuendelea.'));
       return;
     }
     if (step < 3) {
@@ -81,7 +81,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         child: Scaffold(
           appBar: AppBar(
             leading: IconButton(onPressed: back, icon: const Icon(Icons.arrow_back)),
-            title: const Text('Driver registration'),
+            title: Text(AppScope.of(context).t('Driver registration', 'Usajili wa dereva')),
           ),
           body: Column(children: [
             Padding(
@@ -107,7 +107,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
               child: LoadingButton(
-                label: step == 3 ? 'Submit application' : 'Continue',
+                label: step == 3 ? AppScope.of(context).t('Submit application', 'Wasilisha ombi') : AppScope.of(context).t('Continue', 'Endelea'),
                 icon: step == 3 ? Icons.send_rounded : Icons.arrow_forward_rounded,
                 onPressed: () async { await fakeDelay(); if (mounted) next(); },
               ),
@@ -130,16 +130,16 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         ),
       );
 
-  Widget _personal() => _wrap(0, 'Personal details', 'Tell us who you are. Phone and email are verified using OTP.', [
-        _field('Full name', Icons.person_outline),
+  Widget _personal() => _wrap(0, AppScope.of(context).t('Personal details', 'Taarifa binafsi'), AppScope.of(context).t('Tell us who you are. Phone and email are verified using OTP.', 'Tuambie wewe ni nani. Simu na barua pepe zinathibitishwa kwa OTP.'), [
+        _field(AppScope.of(context).t('Full name', 'Jina kamili'), Icons.person_outline),
         const SizedBox(height: 14),
         _phoneField(),
         const SizedBox(height: 14),
-        _otpField('Email', 'driver@example.com', Icons.email_outlined, email: true),
+        _otpField(AppScope.of(context).t('Email', 'Barua pepe'), 'driver@example.com', Icons.email_outlined, email: true),
         const SizedBox(height: 14),
-        _field('National ID number', Icons.badge_outlined),
+        _field(AppScope.of(context).t('National ID number', 'Namba ya kitambulisho cha taifa'), Icons.badge_outlined),
         const SizedBox(height: 14),
-        _field('Home area / address', Icons.home_outlined, required: false),
+        _field(AppScope.of(context).t('Home area / address', 'Eneo la nyumbani / anwani'), Icons.home_outlined, required: false),
       ]);
 
   Widget _phoneField() => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -168,12 +168,12 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             controller: phoneController,
             keyboardType: TextInputType.phone,
             onChanged: (_) { if (phoneVerified) setState(() => phoneVerified = false); },
-            validator: (v) => (v == null || v.trim().isEmpty) ? 'Phone number is required' : null,
-            decoration: const InputDecoration(labelText: 'Phone number', hintText: '7XX XXX XXX', prefixIcon: Icon(Icons.phone_outlined)),
+            validator: (v) => (v == null || v.trim().isEmpty) ? AppScope.of(context).t('Phone number is required', 'Namba ya simu inahitajika') : null,
+            decoration: InputDecoration(labelText: AppScope.of(context).t('Phone number', 'Namba ya simu'), hintText: '7XX XXX XXX', prefixIcon: const Icon(Icons.phone_outlined)),
           ),
         ),
         const SizedBox(width: 8),
-        SizedBox(height: 58, child: FilledButton.tonal(onPressed: _verifyPhone, child: Text(phoneVerified ? 'Verified' : 'Verify'))),
+        SizedBox(height: 58, child: FilledButton.tonal(onPressed: _verifyPhone, child: Text(phoneVerified ? AppScope.of(context).t('Verified', 'Imethibitishwa') : AppScope.of(context).t('Verify', 'Thibitisha')))),
       ]);
 
   Future<void> _pickCountry() async {
@@ -188,43 +188,43 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         country = result;
         phoneVerified = false;
       });
-      toast(context, 'Phone verification reset for ${result.dial}.');
+      toast(context, '${AppScope.of(context).t('Phone verification reset for', 'Uthibitisho wa simu umeanzishwa upya kwa')} ${result.dial}.');
     }
   }
 
   void _verifyPhone() {
     if (phoneController.text.trim().isEmpty) {
-      toast(context, 'Enter your phone number first.');
+      toast(context, AppScope.of(context).t('Enter your phone number first.', 'Ingiza namba yako ya simu kwanza.'));
       return;
     }
     _otpDialog('Phone • ${country.dial} ${phoneController.text.trim()}', phone: true);
   }
 
-  Widget _vehicle() => _wrap(1, 'Vehicle details', 'Add the vehicle you will use for ZenjiGO rides.', [
-        DropdownButtonFormField<String>(initialValue: vehicle, items: ['Boda', 'Bajaji', 'Taxi'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(), onChanged: (v) => setState(() => vehicle = v!), decoration: const InputDecoration(labelText: 'Vehicle type', prefixIcon: Icon(Icons.directions_car_outlined))),
-        const SizedBox(height: 14), _field('Vehicle plate number', Icons.pin_outlined), const SizedBox(height: 14),
-        _field('Vehicle make', Icons.factory_outlined), const SizedBox(height: 14), _field('Vehicle model', Icons.commute_outlined), const SizedBox(height: 14),
-        _field('Vehicle color', Icons.palette_outlined), const SizedBox(height: 14), _field('Model year', Icons.calendar_today_outlined),
+  Widget _vehicle() => _wrap(1, AppScope.of(context).t('Vehicle details', 'Taarifa za gari'), AppScope.of(context).t('Add the vehicle you will use for ZenjiGO rides.', 'Ongeza gari utakalotumia kwa safari za ZenjiGO.'), [
+        DropdownButtonFormField<String>(initialValue: vehicle, items: ['Boda', 'Bajaji', 'Taxi'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(), onChanged: (v) => setState(() => vehicle = v!), decoration: InputDecoration(labelText: AppScope.of(context).t('Vehicle type', 'Aina ya gari'), prefixIcon: const Icon(Icons.directions_car_outlined))),
+        const SizedBox(height: 14), _field(AppScope.of(context).t('Vehicle plate number', 'Namba ya usajili wa gari'), Icons.pin_outlined), const SizedBox(height: 14),
+        _field(AppScope.of(context).t('Vehicle make', 'Chapa ya gari'), Icons.factory_outlined), const SizedBox(height: 14), _field(AppScope.of(context).t('Vehicle model', 'Modeli ya gari'), Icons.commute_outlined), const SizedBox(height: 14),
+        _field(AppScope.of(context).t('Vehicle color', 'Rangi ya gari'), Icons.palette_outlined), const SizedBox(height: 14), _field(AppScope.of(context).t('Model year', 'Mwaka wa modeli'), Icons.calendar_today_outlined),
       ]);
 
-  Widget _documents() => _wrap(2, 'Documents & photos', 'Upload clear, current documents. Admin will verify them manually.', [
-        _upload('Driver’s license', 'Front or PDF', Icons.credit_card),
-        _upload('Zanzibar / Tanzania ID', 'Front and back', Icons.badge_outlined),
-        _upload('Insurance', 'Valid insurance document', Icons.verified_user_outlined),
-        _upload('Vehicle photos', 'Up to 5 exterior/interior photos', Icons.photo_library_outlined, multiple: true),
-        _upload('Driver photo', 'Clear face photo', Icons.add_a_photo_outlined),
+  Widget _documents() => _wrap(2, AppScope.of(context).t('Documents & photos', 'Nyaraka na picha'), AppScope.of(context).t('Upload clear, current documents. Admin will verify them manually.', 'Pakia nyaraka wazi za sasa. Msimamizi atazithibitisha kwa mikono.'), [
+        _upload(AppScope.of(context).t("Driver's license", 'Leseni ya dereva'), AppScope.of(context).t('Front or PDF', 'Mbele au PDF'), Icons.credit_card),
+        _upload(AppScope.of(context).t('Zanzibar / Tanzania ID', 'Kitambulisho cha Zanzibar / Tanzania'), AppScope.of(context).t('Front and back', 'Mbele na nyuma'), Icons.badge_outlined),
+        _upload(AppScope.of(context).t('Insurance', 'Bima'), AppScope.of(context).t('Valid insurance document', 'Nyaraka halali ya bima'), Icons.verified_user_outlined),
+        _upload(AppScope.of(context).t('Vehicle photos', 'Picha za gari'), AppScope.of(context).t('Up to 5 exterior/interior photos', 'Hadi picha 5 za nje/ndani'), Icons.photo_library_outlined, multiple: true),
+        _upload(AppScope.of(context).t('Driver photo', 'Picha ya dereva'), AppScope.of(context).t('Clear face photo', 'Picha wazi ya uso'), Icons.add_a_photo_outlined),
       ]);
 
-  Widget _review() => _wrap(3, 'Review application', 'Confirm the details below before submitting for manual verification.', [
+  Widget _review() => _wrap(3, AppScope.of(context).t('Review application', 'Kagua ombi'), AppScope.of(context).t('Confirm the details below before submitting for manual verification.', 'Thibitisha maelezo yaliyo hapa chini kabla ya kuwasilisha kwa uthibitisho wa mikono.'), [
         Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-          const KeyValueRow('Name', 'Hassan Ali'),
-          KeyValueRow('Phone', '${country.dial} ${phoneController.text.isEmpty ? '712 345 678' : phoneController.text}'),
-          const KeyValueRow('Email', 'hassan@example.com'),
-          const KeyValueRow('Vehicle', 'Taxi • Toyota • Z 123 ABC'),
-          const KeyValueRow('Documents', '5 document groups attached'),
+          KeyValueRow(AppScope.of(context).t('Name', 'Jina'), 'Hassan Ali'),
+          KeyValueRow(AppScope.of(context).t('Phone', 'Simu'), '${country.dial} ${phoneController.text.isEmpty ? '712 345 678' : phoneController.text}'),
+          KeyValueRow(AppScope.of(context).t('Email', 'Barua pepe'), 'hassan@example.com'),
+          KeyValueRow(AppScope.of(context).t('Vehicle', 'Gari'), 'Taxi • Toyota • Z 123 ABC'),
+          KeyValueRow(AppScope.of(context).t('Documents', 'Nyaraka'), AppScope.of(context).t('5 document groups attached', 'Vikundi 5 vya nyaraka vimeambatishwa')),
         ]))),
         const SizedBox(height: 14),
-        CheckboxListTile(contentPadding: EdgeInsets.zero, value: true, onChanged: (_) {}, title: const Text('I confirm the information provided is accurate.'), subtitle: const Text('False or expired documents can cause application rejection.')),
+        CheckboxListTile(contentPadding: EdgeInsets.zero, value: true, onChanged: (_) {}, title: Text(AppScope.of(context).t('I confirm the information provided is accurate.', 'Ninathibitisha taarifa zilizotolewa ni sahihi.')), subtitle: Text(AppScope.of(context).t('False or expired documents can cause application rejection.', 'Nyaraka za uongo au zilizoisha zinaweza kusababisha kukataliwa kwa ombi.'))),
       ]);
 
   Widget _field(String label, IconData icon, {bool required = true}) => TextFormField(
@@ -246,15 +246,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     showDialog(
       context: context,
       builder: (d) => AlertDialog(
-        title: Text('Verify $target'),
-        content: const Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('A 6-digit OTP has been sent. Enter any 6 digits for this frontend demo.'),
+        title: Text('${AppScope.of(context).t('Verify', 'Thibitisha')} $target'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(AppScope.of(context).t('A 6-digit OTP has been sent. Enter any 6 digits for this frontend demo.', 'OTP ya tarakimu 6 imetumwa. Ingiza tarakimu zozote 6 kwa onyesho hili la frontend.')),
           SizedBox(height: 14),
           TextField(keyboardType: TextInputType.number, maxLength: 6, decoration: InputDecoration(labelText: 'OTP code')),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
-          FilledButton(onPressed: () { Navigator.pop(d); setState(() { if (phone) phoneVerified = true; else emailVerified = true; }); toast(context, 'Verified successfully'); }, child: const Text('Verify')),
+          TextButton(onPressed: () => Navigator.pop(d), child: Text(AppScope.of(context).t('Cancel', 'Ghairi'))),
+          FilledButton(onPressed: () { Navigator.pop(d); setState(() { if (phone) phoneVerified = true; else emailVerified = true; }); toast(context, AppScope.of(context).t('Verified successfully', 'Imethibitishwa kwa mafanikio')); }, child: Text(AppScope.of(context).t('Verify', 'Thibitisha'))),
         ],
       ),
     );
@@ -262,8 +262,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   Widget _upload(String title, String sub, IconData icon, {bool multiple = false}) => Card(
         margin: const EdgeInsets.only(bottom: 12),
-        child: ListTile(contentPadding: const EdgeInsets.all(14), leading: CircleAvatar(child: Icon(icon)), title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(sub), trailing: FilledButton.tonal(onPressed: () => toast(context, multiple ? 'Photo picker ready for up to 5 files' : 'File picker ready for backend/plugin integration'), child: const Text('Upload'))),
-      );
+        child: ListTile(contentPadding: const EdgeInsets.all(14), leading: CircleAvatar(child: Icon(icon)), title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)), subtitle: Text(sub), trailing: FilledButton.tonal(onPressed: () => toast(context, multiple ? 'Photo picker ready for up to 5 files' : 'File picker ready for backend/plugin integration'), child: Text(AppScope.of(context).t('Upload', 'Pakia'))),
+      ));
 }
 
 class _CountryPicker extends StatefulWidget {
@@ -314,9 +314,9 @@ class _CountryPickerState extends State<_CountryPicker> {
                 controller: controller,
                 onChanged: (_) => setState(() {}),
                 autofocus: true,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   prefixIcon: Icon(Icons.search),
-                  hintText: 'Search country, ISO or +code',
+                  hintText: AppScope.of(context).t('Search country, ISO or +code', 'Tafuta nchi, ISO au +code'),
                 ),
               ),
             ),
@@ -355,6 +355,7 @@ class _CountryPickerState extends State<_CountryPicker> {
 class ApplicationTrackingScreen extends StatefulWidget { const ApplicationTrackingScreen({super.key}); @override State<ApplicationTrackingScreen> createState() => _ApplicationTrackingScreenState(); }
 class _ApplicationTrackingScreenState extends State<ApplicationTrackingScreen> {
   String status = 'Under Review';
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Application status'), actions: [const ThemeLanguageRow(), const SizedBox(width: 12)]), body: ResponsivePage(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const SizedBox(height: 12), Text('Registration progress', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)), const SizedBox(height: 8), Text('Your documents are checked manually by the ZenjiGO admin team.', style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .67))), const SizedBox(height: 26), ..._steps(), const SizedBox(height: 18), if (status == 'Rejected') const Card(child: ListTile(leading: Icon(Icons.error_outline, color: Colors.redAccent), title: Text('Application rejected', style: TextStyle(fontWeight: FontWeight.bold)), subtitle: Text('Reason: Insurance document is expired. Upload a valid insurance document and resubmit.'))), if (status == 'Approved' || status == 'Active') LoadingButton(label: 'Enter ZenjiGO Driver', icon: Icons.local_taxi_rounded, onPressed: () async { await fakeDelay(); AppScope.of(context).setApplicationStatus('Active'); if (context.mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainShell()), (_) => false); }), if (status != 'Approved' && status != 'Active') LoadingButton(label: 'Demo: mark approved', outline: true, onPressed: () async { await fakeDelay(); setState(() => status = 'Approved'); }), const SizedBox(height: 12), Text('Statuses: Pending → Under Review → Approved / Rejected → Active', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .55))) ])));
-  List<Widget> _steps() { final labels = ['Pending', 'Under Review', 'Approved', 'Active']; final current = status == 'Rejected' ? 1 : labels.indexOf(status); return List.generate(labels.length, (i) { final done = i <= current; return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Column(children: [CircleAvatar(radius: 18, backgroundColor: done ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface.withValues(alpha: .1), child: Icon(done ? Icons.check : Icons.more_horiz, size: 18, color: done ? Colors.white : null)), if (i < labels.length - 1) Container(width: 2, height: 42, color: done ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface.withValues(alpha: .1))]), const SizedBox(width: 14), Expanded(child: Padding(padding: const EdgeInsets.only(top: 7), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(labels[i], style: TextStyle(fontWeight: FontWeight.w800, color: done ? null : Theme.of(context).colorScheme.onSurface.withValues(alpha: .45))), if (i == current) Padding(padding: const EdgeInsets.only(top: 3), child: Text(i == 1 ? 'Admin is checking your identity, vehicle and documents.' : 'Current application stage', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .6))))])))]); }); }
+  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(AppScope.of(context).t('Application status', 'Hali ya ombi')), actions: [const ThemeLanguageRow(), const SizedBox(width: 12)]), body: ResponsivePage(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const SizedBox(height: 12), Text(AppScope.of(context).t('Registration progress', 'Maendeleo ya usajili'), style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)), const SizedBox(height: 8), Text(AppScope.of(context).t('Your documents are checked manually by the ZenjiGO admin team.', 'Nyaraka zako zinakaguliwa kwa mikono na timu ya usimamizi ya ZenjiGO.'), style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .67))), const SizedBox(height: 26), ..._steps(), const SizedBox(height: 18), if (status == 'Rejected') Card(child: ListTile(leading: const Icon(Icons.error_outline, color: Colors.redAccent), title: Text(AppScope.of(context).t('Application rejected', 'Ombi limekataliwa'), style: const TextStyle(fontWeight: FontWeight.bold)), subtitle: Text(AppScope.of(context).t('Reason: Insurance document is expired. Upload a valid insurance document and resubmit.', 'Sababu: Nyaraka ya bima imeisha. Pakia nyaraka halali ya bima na uwasilishe tena.')))), if (status == 'Approved' || status == 'Active') LoadingButton(label: AppScope.of(context).t('Enter ZenjiGO Driver', 'Ingia ZenjiGO Dereva'), icon: Icons.local_taxi_rounded, onPressed: () async { await fakeDelay(); AppScope.of(context).setApplicationStatus('Active'); if (context.mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainShell()), (_) => false); }), if (status != 'Approved' && status != 'Active') LoadingButton(label: AppScope.of(context).t('Demo: mark approved', 'Onyesho: weka kuwa imeidhinishwa'), outline: true, onPressed: () async { await fakeDelay(); setState(() => status = 'Approved'); }), const SizedBox(height: 12), Text(AppScope.of(context).t('Statuses: Pending → Under Review → Approved / Rejected → Active', 'Hali: Inasubiri → Inakaguliwa → Imeidhinishwa / Imekataliwa → Aktivu'), style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .55))) ])));
+  List<Widget> _steps() { final s = AppScope.of(context);
+    final labels = [s.t('Pending', 'Inasubiri'), s.t('Under Review', 'Inakaguliwa'), s.t('Approved', 'Imeidhinishwa'), s.t('Active', 'Aktivu')]; final current = status == 'Rejected' ? 1 : labels.indexOf(status); return List.generate(labels.length, (i) { final done = i <= current; return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Column(children: [CircleAvatar(radius: 18, backgroundColor: done ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface.withValues(alpha: .1), child: Icon(done ? Icons.check : Icons.more_horiz, size: 18, color: done ? Colors.white : null)), if (i < labels.length - 1) Container(width: 2, height: 42, color: done ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface.withValues(alpha: .1))]), const SizedBox(width: 14), Expanded(child: Padding(padding: const EdgeInsets.only(top: 7), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(labels[i], style: TextStyle(fontWeight: FontWeight.w800, color: done ? null : Theme.of(context).colorScheme.onSurface.withValues(alpha: .45))), if (i == current) Padding(padding: const EdgeInsets.only(top: 3), child: Text(i == 1 ? AppScope.of(context).t('Admin is checking your identity, vehicle and documents.', 'Msimamizi anakagua utambulisho wako, gari na nyaraka.') : AppScope.of(context).t('Current application stage', 'Hatua ya sasa ya ombi'), style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .6))))])))]); }); }
 }

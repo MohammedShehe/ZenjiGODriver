@@ -13,6 +13,9 @@ class AppState extends ChangeNotifier {
   void setOnline(bool value) { online = value; notifyListeners(); }
   void setNav(int index) { navIndex = index; notifyListeners(); }
   void setApplicationStatus(String status) { applicationStatus = status; notifyListeners(); }
+
+  /// Translate helper: returns Swahili when language is Kiswahili, otherwise English.
+  String t(String en, String sw) => isSwahili ? sw : en;
 }
 
 class AppScope extends InheritedNotifier<AppState> {

@@ -5,7 +5,8 @@ import 'registration.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
-  @override State<OnboardingScreen> createState() => _OnboardingScreenState();
+  @override
+  State<OnboardingScreen> createState() => _OnboardingScreenState();
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
@@ -14,96 +15,106 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   bool location = true, updates = true;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        body: SafeArea(
-          child: Column(
-            children: [
-              _brandingHeader(context),
-              Expanded(
-                child: PageView(
-                  controller: pc,
-                  onPageChanged: (v) => setState(() => index = v),
-                  children: [_about(), _permissions()],
-                ),
+  Widget build(BuildContext context) {
+    final s = AppScope.of(context);
+    final media = MediaQuery.of(context);
+    final isSmall = media.size.height < 700 || media.size.width < 360;
+
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
+            _brandingHeader(context, isSmall: isSmall),
+            Expanded(
+              child: PageView(
+                controller: pc,
+                onPageChanged: (v) => setState(() => index = v),
+                children: [_about(s), _permissions(s)],
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 22),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(
-                        2,
-                        (i) => AnimatedContainer(
-                          duration: const Duration(milliseconds: 250),
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          width: index == i ? 28 : 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: index == i
-                                ? Theme.of(context).colorScheme.primary
-                                : Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withValues(alpha: .18),
-                            borderRadius: BorderRadius.circular(99),
-                          ),
+            ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, isSmall ? 12 : 22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(
+                      2,
+                      (i) => AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        width: index == i ? 28 : 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: index == i
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: .18),
+                          borderRadius: BorderRadius.circular(99),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    LoadingButton(
-                      label: index == 0 ? 'Continue' : 'Allow & continue',
-                      icon: Icons.arrow_forward_rounded,
-                      onPressed: () async {
-                        await fakeDelay(350);
-                        if (!context.mounted) return;
-                        if (index == 0) {
-                          pc.nextPage(
-                            duration: const Duration(milliseconds: 350),
-                            curve: Curves.easeOut,
-                          );
-                        } else {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const RegistrationScreen(),
-                            ),
-                          );
-                        }
-                      },
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 12),
+                  LoadingButton(
+                    label: index == 0
+                        ? s.t('Continue', 'Endelea')
+                        : s.t('Allow & continue', 'Ruhusu na uendelee'),
+                    icon: Icons.arrow_forward_rounded,
+                    onPressed: () async {
+                      await fakeDelay(350);
+                      if (!context.mounted) return;
+                      if (index == 0) {
+                        pc.nextPage(
+                          duration: const Duration(milliseconds: 350),
+                          curve: Curves.easeOut,
+                        );
+                      } else {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const RegistrationScreen(),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-      );
+      ),
+    );
+  }
 
-  Widget _brandingHeader(BuildContext context) {
+  Widget _brandingHeader(BuildContext context, {required bool isSmall}) {
+    final headerH = isSmall ? 140.0 : 200.0;
+    final logoH = isSmall ? 110.0 : 180.0;
     return SizedBox(
-      height: 218,
+      height: headerH,
       width: double.infinity,
       child: Stack(
         clipBehavior: Clip.none,
         children: [
-          // Full-screen center: deliberately independent of the corner controls.
           Positioned.fill(
             child: IgnorePointer(
               child: Center(
                 child: SizedBox(
-                  height: 200,
-                  child: const ZenjiLogo(height: 200),
+                  height: logoH,
+                  child: ZenjiLogo(height: logoH),
                 ),
               ),
             ),
           ),
           Positioned(
-            left: 20,
-            top: 14,
+            left: 12,
+            top: 8,
             child: PopupMenuButton<bool>(
-              tooltip: 'Language',
+              tooltip: AppScope.of(context).t('Language', 'Lugha'),
               initialValue: AppScope.of(context).isSwahili,
               onSelected: AppScope.of(context).setLanguage,
               itemBuilder: (_) => const [
@@ -117,14 +128,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
           ),
           Positioned(
-            right: 20,
-            top: 10,
+            right: 12,
+            top: 4,
             child: Builder(
               builder: (context) {
                 final dark = Theme.of(context).brightness == Brightness.dark;
+                final s = AppScope.of(context);
                 return IconButton.filledTonal(
-                  tooltip: dark ? 'Use light mode' : 'Use dark mode',
-                  onPressed: () => AppScope.of(context).toggleTheme(!dark),
+                  tooltip: dark
+                      ? s.t('Use light mode', 'Tumia hali ya mwanga')
+                      : s.t('Use dark mode', 'Tumia hali ya giza'),
+                  onPressed: () => s.toggleTheme(!dark),
                   icon: Icon(
                     dark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
                   ),
@@ -137,75 +151,83 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  Widget _about() => ResponsivePage(
+  Widget _about(AppState s) => ResponsivePage(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Column(
           children: [
             const SizedBox(height: 4),
             Container(
-              width: 104,
-              height: 104,
+              width: 88,
+              height: 88,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: Theme.of(context).colorScheme.primary.withValues(alpha: .12),
               ),
               child: Icon(
                 Icons.directions_car_filled_rounded,
-                size: 58,
+                size: 48,
                 color: Theme.of(context).colorScheme.primary,
               ),
             ),
-            const SizedBox(height: 22),
+            const SizedBox(height: 16),
             Text(
-              'Drive with ZenjiGO',
+              s.t('Drive with ZenjiGO', 'Endesha na ZenjiGO'),
               style: Theme.of(context)
                   .textTheme
-                  .headlineMedium
+                  .headlineSmall
                   ?.copyWith(fontWeight: FontWeight.w900),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             Text(
-              'ZenjiGO connects trusted drivers with riders across Zanzibar and Tanzania. Earn on your schedule, receive nearby ride requests, track trips live, manage earnings, and get support in one professional driver app.',
+              s.t(
+                'ZenjiGO connects trusted drivers with riders across Zanzibar and Tanzania. Earn on your schedule, receive nearby ride requests, track trips live, manage earnings, and get support in one professional driver app.',
+                'ZenjiGO inaunganisha madereva waaminifu na abiria Zanzibar na Tanzania. Pata mapato kwa ratiba yako, pokea maombi ya safari karibu, fuatilia safari moja kwa moja, simamia mapato, na upate msaada katika programu moja ya kitaalamu ya madereva.',
+              ),
               textAlign: TextAlign.center,
               style: TextStyle(
-                height: 1.55,
-                fontSize: 16,
+                height: 1.5,
+                fontSize: 15,
                 color: Theme.of(context)
                     .colorScheme
                     .onSurface
                     .withValues(alpha: .72),
               ),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 20),
             Wrap(
-              spacing: 10,
-              runSpacing: 10,
+              spacing: 8,
+              runSpacing: 8,
               alignment: WrapAlignment.center,
-              children: const [
-                Pill('Flexible driving', icon: Icons.schedule),
-                Pill('Secure earnings', icon: Icons.account_balance_wallet_outlined),
-                Pill('Driver support', icon: Icons.support_agent),
+              children: [
+                Pill(s.t('Flexible driving', 'Kuendesha kwa urahisi'), icon: Icons.schedule),
+                Pill(s.t('Secure earnings', 'Mapato salama'), icon: Icons.account_balance_wallet_outlined),
+                Pill(s.t('Driver support', 'Msaada wa dereva'), icon: Icons.support_agent),
               ],
             ),
           ],
         ),
       );
 
-  Widget _permissions() => ResponsivePage(
+  Widget _permissions(AppState s) => ResponsivePage(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             Text(
-              'Permissions',
+              s.t('Permissions', 'Ruhusa'),
               style: Theme.of(context)
                   .textTheme
-                  .headlineMedium
+                  .headlineSmall
                   ?.copyWith(fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 8),
             Text(
-              'These permissions help ZenjiGO work properly while you drive.',
+              s.t(
+                'These permissions help ZenjiGO work properly while you drive.',
+                'Ruhusa hizi husaidia ZenjiGO kufanya kazi vizuri unapoendesha.',
+              ),
               style: TextStyle(
                 color: Theme.of(context)
                     .colorScheme
@@ -213,26 +235,35 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     .withValues(alpha: .68),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             _permission(
               Icons.location_on_outlined,
-              'Location permission',
-              'Required for nearby requests, navigation and live ride tracking.',
+              s.t('Location permission', 'Ruhusa ya mahali'),
+              s.t(
+                'Required for nearby requests, navigation and live ride tracking.',
+                'Inahitajika kwa maombi ya karibu, urambazaji na ufuatiliaji wa safari moja kwa moja.',
+              ),
               location,
               (v) => setState(() => location = v),
+              isLocation: true,
+              s: s,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             _permission(
               Icons.notifications_active_outlined,
-              'Updates & offers',
-              'Receive ride activity, driver announcements, bonuses and offers.',
+              s.t('Updates & offers', 'Taarifa na ofa'),
+              s.t(
+                'Receive ride activity, driver announcements, bonuses and offers.',
+                'Pokea shughuli za safari, matangazo ya madereva, bonasi na ofa.',
+              ),
               updates,
               (v) => setState(() => updates = v),
+              s: s,
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             Card(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(14),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -240,12 +271,16 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       Icons.privacy_tip_outlined,
                       color: Theme.of(context).colorScheme.primary,
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'You can change optional notification preferences later in Settings. Location is required when going online.',
+                        s.t(
+                          'You can change optional notification preferences later in Settings. Location is required when going online.',
+                          'Unaweza kubadilisha mapendeleo ya arifa baadaye kwenye Mipangilio. Mahali inahitajika unapoenda mtandaoni.',
+                        ),
                         style: TextStyle(
-                          height: 1.45,
+                          height: 1.4,
+                          fontSize: 13,
                           color: Theme.of(context)
                               .colorScheme
                               .onSurface
@@ -266,14 +301,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     String title,
     String text,
     bool value,
-    ValueChanged<bool> cb,
-  ) => Card(
+    ValueChanged<bool> cb, {
+    bool isLocation = false,
+    required AppState s,
+  }) =>
+      Card(
         child: SwitchListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           value: value,
-          onChanged: title.startsWith('Location')
+          onChanged: isLocation
               ? (v) {
                   setState(() => location = true);
-                  toast(context, 'Location is required for driver services.');
+                  toast(
+                    context,
+                    s.t(
+                      'Location is required for driver services.',
+                      'Mahali inahitajika kwa huduma za dereva.',
+                    ),
+                  );
                 }
               : cb,
           secondary: CircleAvatar(
@@ -281,10 +326,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 Theme.of(context).colorScheme.primary.withValues(alpha: .12),
             child: Icon(icon, color: Theme.of(context).colorScheme.primary),
           ),
-          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+          title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(text),
+            child: Text(text, style: const TextStyle(fontSize: 13)),
           ),
         ),
       );

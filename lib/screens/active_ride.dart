@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:zenjigodriver/core/app_state.dart';
 
 import '../core/mock_map.dart';
 import '../core/theme.dart';
@@ -21,15 +22,15 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
       canPop: stage == 3,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) {
-          toast(context, 'Finish or cancel the active ride before leaving.');
+          toast(context, AppScope.of(context).t('Finish or cancel the active ride before leaving.', 'Maliza au ghairi safari inayoendelea kabla ya kuondoka.'));
         }
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(stage < 2 ? 'Pickup rider' : 'Active ride'),
+          title: Text(stage < 2 ? AppScope.of(context).t('Pickup rider', 'Chukua abiria') : AppScope.of(context).t('Active ride', 'Safari inayoendelea')),
           actions: [
             Pill(
-              stage == 2 ? 'IN PROGRESS' : 'TO PICKUP',
+              stage == 2 ? AppScope.of(context).t('IN PROGRESS', 'INAENDELEA') : 'TO PICKUP',
               color: stage == 2 ? ZenjiColors.green : null,
             ),
             const SizedBox(width: 14),
@@ -105,7 +106,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                                 IconButton.filledTonal(
                                   onPressed: () => toast(
                                     context,
-                                    'Calling rider: +255 777 123 456',
+                                    AppScope.of(context).t('Calling rider', 'Inampigia abiria') + ': +255 777 123 456',
                                   ),
                                   icon: const Icon(Icons.call),
                                 ),
@@ -125,10 +126,10 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                               ],
                             ),
                             const Divider(height: 26),
-                            const KeyValueRow('Pickup', 'Darajani Market'),
-                            const KeyValueRow('Drop-off', 'Zanzibar Airport'),
-                            const KeyValueRow('Distance', '9.4 km'),
-                            const KeyValueRow('Est. fare', 'TZS 18,500'),
+                            KeyValueRow(AppScope.of(context).t('Pickup', 'Kuchukua'), 'Darajani Market'),
+                            KeyValueRow(AppScope.of(context).t('Drop-off', 'Kushusha'), 'Zanzibar Airport'),
+                            KeyValueRow(AppScope.of(context).t('Distance', 'Umbali'), '9.4 km'),
+                            KeyValueRow(AppScope.of(context).t('Est. fare', 'Nauli inayokadiriwa'), 'TZS 18,500'),
                           ],
                         ),
                       ),
@@ -168,10 +169,10 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                     if (stage == 2) {
                       final yes = await confirmDialog(
                         context,
-                        title: 'End this ride?',
+                        title: AppScope.of(context).t('End this ride?', 'Maliza safari hii?'),
                         message:
                             'Confirm only after the rider has reached the drop-off location.',
-                        confirm: 'End ride',
+                        confirm: AppScope.of(context).t('End ride', 'Maliza safari'),
                       );
                       if (yes != true) return;
                     }
@@ -192,8 +193,8 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
   String _label() => [
         'I HAVE ARRIVED',
         'START RIDE',
-        'END RIDE',
-        'RIDE COMPLETED',
+        AppScope.of(context).t('END RIDE', 'MALIZA SAFARI'),
+        AppScope.of(context).t('RIDE COMPLETED', 'SAFARI IMEKAMILIKA'),
       ][stage];
 
   IconData _icon() => [
@@ -204,22 +205,22 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
       ][stage];
 
   Widget _fare() {
-    return const Card(
+    return Card(
       child: Padding(
-        padding: EdgeInsets.all(16),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Fare summary',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+              AppScope.of(context).t('Fare summary', 'Muhtasari wa nauli'),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
             ),
             SizedBox(height: 8),
-            KeyValueRow('Base fare', 'TZS 4,000'),
-            KeyValueRow('Distance fare', 'TZS 12,500'),
-            KeyValueRow('Time / extras', 'TZS 2,000'),
-            Divider(),
-            KeyValueRow('Estimated total', 'TZS 18,500'),
+            const KeyValueRow('Base fare', 'TZS 4,000'),
+            const KeyValueRow('Distance fare', 'TZS 12,500'),
+            const KeyValueRow('Time / extras', 'TZS 2,000'),
+            const Divider(),
+            KeyValueRow(AppScope.of(context).t('Estimated total', 'Jumla inayokadiriwa'), 'TZS 18,500'),
           ],
         ),
       ),
@@ -290,10 +291,10 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                 initialValue: reason,
                 items: [
                   'Unsafe behavior',
-                  'Harassment',
-                  'Payment issue',
-                  'Damage / mess',
-                  'Other',
+                  AppScope.of(context).t('Harassment', 'Unyanyasaji'),
+                  AppScope.of(context).t('Payment issue', 'Tatizo la malipo'),
+                  AppScope.of(context).t('Damage / mess', 'Uharibifu / uchafu'),
+                  AppScope.of(context).t('Other', 'Nyingine'),
                 ]
                     .map(
                       (item) => DropdownMenuItem(
@@ -307,19 +308,19 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                     setDialogState(() => reason = value);
                   }
                 },
-                decoration: const InputDecoration(labelText: 'Reason'),
+                decoration: InputDecoration(labelText: AppScope.of(context).t('Reason', 'Sababu')),
               ),
               const SizedBox(height: 12),
-              const TextField(
+              TextField(
                 maxLines: 3,
-                decoration: InputDecoration(labelText: 'Additional details'),
+                decoration: InputDecoration(labelText: AppScope.of(context).t('Additional details', 'Maelezo ya ziada')),
               ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancel'),
+              child: Text(AppScope.of(context).t('Cancel', 'Ghairi')),
             ),
             FilledButton(
               onPressed: () async {
@@ -333,7 +334,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                 if (ok == true && dialogContext.mounted) {
                   Navigator.pop(dialogContext);
                   if (mounted) {
-                    toast(context, 'Rider report submitted successfully.');
+                    toast(context, AppScope.of(context).t('Rider report submitted successfully.', 'Ripoti ya abiria imewasilishwa kwa mafanikio.'));
                   }
                 }
               },
@@ -356,11 +357,11 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
           size: 52,
         ),
         title: const Text('Ride completed'),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Great job! The trip has been completed successfully.',
+              AppScope.of(context).t('Great job! The trip has been completed successfully.', 'Kazi nzuri! Safari imekamilika kwa mafanikio.'),
               textAlign: TextAlign.center,
             ),
             SizedBox(height: 12),
