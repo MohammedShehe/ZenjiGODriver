@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'core/app_state.dart';
 import 'core/theme.dart';
+import 'core/beach_atmosphere.dart';
 import 'screens/onboarding.dart';
 
 class ZenjiGoDriverApp extends StatefulWidget {
@@ -25,6 +26,7 @@ class _ZenjiGoDriverAppState extends State<ZenjiGoDriverApp> {
           theme: ZenjiTheme.light(),
           darkTheme: ZenjiTheme.dark(),
           themeMode: state.themeMode,
+          builder: (context, child) => BeachAtmosphere(child: child ?? const SizedBox.shrink()),
           home: const OnboardingScreen(),
         ),
       ),

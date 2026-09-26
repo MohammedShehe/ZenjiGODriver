@@ -101,6 +101,33 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         clipBehavior: Clip.none,
         children: [
           Positioned.fill(
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
+              child: Opacity(
+                opacity: .84,
+                child: Image.asset(
+                  'assets/images/zanzibar_coast_aerial.jpg',
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.vertical(bottom: Radius.circular(28)),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.black.withValues(alpha: .06), Colors.black.withValues(alpha: .46)],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned.fill(
             child: IgnorePointer(
               child: Center(
                 child: SizedBox(
