@@ -60,7 +60,7 @@ class _LoadingButtonState extends State<LoadingButton> {
 class Pill extends StatelessWidget {
   final String text; final Color? color; final IconData? icon;
   const Pill(this.text, {super.key, this.color, this.icon});
-  @override Widget build(BuildContext context) { final c = color ?? Theme.of(context).colorScheme.primary; return Container(padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7), decoration: BoxDecoration(color: c.withValues(alpha: .13), borderRadius: BorderRadius.circular(99)), child: Row(mainAxisSize: MainAxisSize.min, children: [if(icon != null)...[Icon(icon, size: 14, color: c), const SizedBox(width: 5)], Text(text, style: TextStyle(color: c, fontWeight: FontWeight.w700, fontSize: 12))])); }
+  @override Widget build(BuildContext context) { final c = color ?? Theme.of(context).colorScheme.primary; return Container(padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7), decoration: BoxDecoration(color: c.withValues(alpha: .13), borderRadius: BorderRadius.circular(99)), child: Row(mainAxisSize: MainAxisSize.min, children: [if(icon != null)...[Icon(icon, size: 14, color: c), const SizedBox(width: 5)], Flexible(child: Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: c, fontWeight: FontWeight.w700, fontSize: 12)))])); }
 }
 
 Future<void> fakeDelay([int ms = 650]) => Future.delayed(Duration(milliseconds: ms));
