@@ -547,17 +547,21 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 10),
           Card(
             child: Column(children: [
-              RadioListTile<bool>(
-                value: false,
-                groupValue: s.isSwahili,
-                onChanged: (v) => s.setLanguage(v!),
+              ListTile(
+                leading: Icon(
+                  s.isSwahili ? Icons.radio_button_off : Icons.radio_button_checked,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 title: const Text('English'),
+                onTap: () => s.setLanguage(false),
               ),
-              RadioListTile<bool>(
-                value: true,
-                groupValue: s.isSwahili,
-                onChanged: (v) => s.setLanguage(v!),
+              ListTile(
+                leading: Icon(
+                  s.isSwahili ? Icons.radio_button_checked : Icons.radio_button_off,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 title: const Text('Kiswahili'),
+                onTap: () => s.setLanguage(true),
               ),
             ]),
           ),
@@ -568,8 +572,20 @@ class SettingsScreen extends StatelessWidget {
               onChanged: null,
               secondary: const Icon(Icons.notifications_active_outlined),
               title: Text(s.t('Updates & offers', 'Taarifa na ofa'), style: const TextStyle(fontWeight: FontWeight.w800)),
-              subtitle: Text(s.t('Enabled by default for this frontend demo.', 'Imewashwa kwa chaguo-msingi kwa onyesho hili la frontend.')),
+              subtitle: Text(s.t('Push notifications when available.', 'Arifa za push zinapopatikana.')),
             ),
+          ),
+          const SizedBox(height: 24),
+          LoadingButton(
+            label: s.t('Sign out', 'Toka'),
+            outline: true,
+            icon: Icons.logout,
+            onPressed: () async {
+              await s.logout();
+              if (context.mounted) {
+                Navigator.of(context).popUntil((r) => r.isFirst);
+              }
+            },
           ),
         ]),
       ),

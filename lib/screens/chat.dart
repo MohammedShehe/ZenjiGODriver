@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/api/driver_api.dart';
+import '../core/app_state.dart';
 import '../core/theme.dart';
 import '../core/widgets.dart';
 
@@ -11,12 +13,36 @@ class ChatListScreen extends StatefulWidget {
 }
 
 class _ChatListScreenState extends State<ChatListScreen> {
-  final List<List<String>> chats = [
+  List<List<String>> chats = [
     ['ZenjiGO Support', 'How can we help you today?', 'Pinned'],
-    ['Asha Salim', 'I am near the entrance.', '2'],
-    ['Juma Omar', 'Thank you for the ride!', '1'],
-    ['Fatma Said', 'Okay, I see your car.', ''],
   ];
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final list = await DriverApi.conversations();
+      if (list.isNotEmpty && mounted) {
+        setState(() {
+          chats = list.map((c) {
+            final m = Map<String, dynamic>.from(c as Map);
+            final title = (m['title'] ?? m['type'] ?? m['context_type'] ?? 'Chat').toString();
+            final preview = (m['last_message'] ?? m['preview'] ?? '${m['messageCount'] ?? 0} messages').toString();
+            final badge = (m['type'] == 'support' || title.toLowerCase().contains('support')) ? 'Pinned' : '';
+            return [title, preview, badge];
+          }).toList();
+          loading = false;
+        });
+        return;
+      }
+    } catch (_) {}
+    if (mounted) setState(() => loading = false);
+  }
 
   @override
   Widget build(BuildContext context) {

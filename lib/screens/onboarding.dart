@@ -108,7 +108,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 child: Image.asset(
                   'assets/images/zanzibar_coast_aerial.jpg',
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
                 ),
               ),
             ),

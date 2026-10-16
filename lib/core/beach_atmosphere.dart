@@ -41,7 +41,7 @@ class BeachAtmosphere extends StatelessWidget {
                   'assets/images/zanzibar_beach_hero.jpg',
                   fit: BoxFit.cover,
                   alignment: Alignment.topCenter,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
                 ),
               ),
             ),

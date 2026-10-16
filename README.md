@@ -1,48 +1,67 @@
-# ZenjiGO Driver Frontend
+# ZenjiGO Driver
 
-A complete Flutter frontend prototype for **ZenjiGO Driver**, designed for drivers providing Boda, Bajaji and Taxi ride services.
+Flutter Driver app for **ZenjiGO** — fully wired to the ZenjiGO backend API.
 
-## Implemented flows
+## Integrated flows (live API)
 
-- Onboarding / About ZenjiGO with English / Kiswahili preference UI
-- Location and updates permissions UI
-- Multi-step driver registration
-- Phone and email OTP verification UI
-- Vehicle information
-- Driver license, national ID, insurance, up to 5 vehicle photos and driver photo upload UI
-- Manual application tracking: Pending → Under Review → Approved / Rejected → Active
-- Four-tab shell: Home, Earnings, Chat and Profile
-- Driver online/offline state
-- Nearby ride request presentation and accept/reject flow
-- Active ride: pickup, arrived, start ride, live-progress map simulation, end ride and fare summary
-- Rider profile, call/chat actions, report rider confirmation and ZenjiGO support options
-- Earnings charts, commission breakdown, incentives and wallet history
-- Withdrawal flow for M-Pesa, YAS and bank transfer with required payout details
-- WhatsApp-inspired chats with support pinned first, edit/reply/delete message interactions and translation toggle
-- Driver profile, ratings/reviews, verified document management
-- Admin-reviewed profile update requests
-- License / insurance renewal requests with upload and review status messaging
-- English / Kiswahili preference, dark/light mode and emergency/support screen
-- Responsive layouts and Android back-navigation handling
-- Loading indicators for primary asynchronous-style actions
-- ZenjiGO branding, logos and app icon across Android, iOS, web and Windows
+| Flow | Endpoint(s) |
+|------|-------------|
+| Send OTP | `POST /auth/driver/send-otp` |
+| Login | `POST /auth/driver/login` |
+| Multi-step registration + document upload | `POST /driver/register` (multipart) |
+| Profile restore on launch | `GET /driver/me` |
+| Go online / offline | `PATCH /driver/online` |
+| Ride requests | `GET /driver/ride-requests` |
+| Accept ride | `POST /driver/rides/:id/accept` |
+| Ride status (arriving → arrived → started → completed) | `PATCH /driver/rides/:id/status` |
+| Finance / settlement status | `GET /driver/finance` |
+| Create settlement | `POST /driver/settlements` |
+| Autopay toggle | `POST /driver/autopay` |
+| Withdrawal / payout request | `POST /driver/payout` |
+| Chat conversations | `GET /driver/chat` |
+| Sign out | clears tokens + `POST /auth/logout` |
+| Token refresh | automatic on 401 via `POST /auth/refresh` |
+
+## Still UI-assisted (no hardware dependency in this package)
+
+- Map rendering uses an in-app mock map widget (swap for Google Maps / Mapbox when you add the SDK key)
+- GPS coordinates are not streamed continuously (call `DriverApi.updateLocation` from a geolocator timer when you add the package)
+- In-conversation chat messages remain local until you connect Socket.IO or poll `DriverApi.messages`
+- FCM push requires Firebase project wiring (`DriverApi.registerFcmToken`)
+
+## Configure API base URL
+
+Default: `http://localhost:5000/api/v1`
+
+Override at build time:
+
+```bash
+flutter run --dart-define=ZENJIGO_API_URL=http://10.0.2.2:5000/api/v1
+```
+
+- Android emulator → `http://10.0.2.2:5000/api/v1`
+- iOS simulator → `http://localhost:5000/api/v1`
+- Physical device → your machine LAN IP
+
+## Run
+
+```bash
+# Backend must be running first
+cd ../ZenjiGOAdmin/backend   # or your backend path
+npm install && npm run migrate && npm run seed && npm run dev
+
+# Driver app
+cd zenjigodriver
+flutter pub get
+flutter run --dart-define=ZENJIGO_API_URL=http://10.0.2.2:5000/api/v1
+```
+
+## Auth flow
+
+1. Register (or use an admin-approved driver account)
+2. Sign in with phone → OTP (Twilio Verify when configured)
+3. JWT access + refresh tokens stored in SharedPreferences
 
 ## Theme
 
-Dark mode is the initial app mode. Both supplied `logo_dark.png` and `logo_light.png` are used according to the current brightness.
-
-## Backend integration notes
-
-This package intentionally contains **frontend only**. Network calls, real OTP, real file picker/upload, real map/GPS, payment withdrawals, phone/email intents, push notifications and chat transport are represented by complete UI states and clearly marked integration points. Replace the mock delays/data with your services when the backend is ready.
-
-For production integration, typical Flutter packages can include a map provider, geolocation/permission package, image/file picker, HTTP client, secure storage, push notification service and WebSocket/chat transport.
-
-## Run locally
-
-```bash
-flutter pub get
-flutter analyze
-flutter run
-```
-
-The supplied template targets Dart SDK `^3.10.4`.
+Dark mode is the default. English / Kiswahili toggle is available in Settings.

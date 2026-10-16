@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:zenjigodriver/core/app_state.dart';
+import '../core/api/driver_api.dart';
 
 import '../core/mock_map.dart';
 import '../core/theme.dart';
@@ -7,7 +8,8 @@ import '../core/widgets.dart';
 import 'chat.dart';
 
 class ActiveRideScreen extends StatefulWidget {
-  const ActiveRideScreen({super.key});
+  const ActiveRideScreen({super.key, this.rideId});
+  final String? rideId;
 
   @override
   State<ActiveRideScreen> createState() => _ActiveRideScreenState();
@@ -106,7 +108,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                                 IconButton.filledTonal(
                                   onPressed: () => toast(
                                     context,
-                                    AppScope.of(context).t('Calling rider', 'Inampigia abiria') + ': +255 777 123 456',
+                                    '${AppScope.of(context).t('Calling rider', 'Inampigia abiria')}: +255 777 123 456',
                                   ),
                                   icon: const Icon(Icons.call),
                                 ),
@@ -166,6 +168,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                   label: _label(),
                   icon: _icon(),
                   onPressed: () async {
+                    final messenger = ScaffoldMessenger.maybeOf(context);
                     if (stage == 2) {
                       final yes = await confirmDialog(
                         context,
@@ -176,10 +179,20 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                       );
                       if (yes != true) return;
                     }
-                    await fakeDelay();
-                    if (!mounted) return;
-                    if (stage < 3) setState(() => stage++);
-                    if (stage == 3) _complete();
+                    try {
+                      if (widget.rideId == null) throw Exception('Ride ID missing.');
+                      final nextStatus = ['arriving', 'arrived', 'started', 'completed'][stage];
+                      await DriverApi.status(widget.rideId!, nextStatus);
+                      if (!mounted) return;
+                      if (stage < 3) setState(() => stage++);
+                      if (stage == 3) _complete();
+                    } catch (e) {
+                      if (mounted && messenger != null) {
+                        messenger.showSnackBar(
+                          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                        );
+                      }
+                    }
                   },
                 ),
               ),

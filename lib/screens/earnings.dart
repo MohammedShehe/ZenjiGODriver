@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:zenjigodriver/core/app_state.dart';
+import 'package:zenjigodriver/core/api/driver_api.dart';
 
 import '../core/theme.dart';
 import '../core/widgets.dart';
@@ -9,6 +10,12 @@ class EarningsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final f = state.finance ?? const <String,dynamic>{};
+    final owed = (f['commission_owed'] ?? 0).toString();
+    final gross = (f['gross_since_settlement'] ?? 0).toString();
+    final blocked = f['blocked'] == 1 || f['blocked'] == true;
+    final autopay = f['autopay_enabled'] == 1 || f['autopay_enabled'] == true;
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.all(18),
@@ -47,7 +54,7 @@ class EarningsScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    'TZS 184,500',
+                    'TZS ${f['available_balance'] ?? f['total_earnings'] ?? '0'}',
                     style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                           fontWeight: FontWeight.w900,
                         ),
@@ -70,6 +77,25 @@ class EarningsScreen extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children:[
+                Row(children:[const Icon(Icons.account_balance_outlined),const SizedBox(width:8),const Expanded(child:Text('ZenjiGO settlement',style:TextStyle(fontWeight:FontWeight.w900))),if(blocked) const Pill('RESTRICTED')]),
+                const SizedBox(height:8),
+                Text('Gross since last settlement: TZS $gross'),
+                Text('Commission owed: TZS $owed'),
+                Text('Autopay: ${autopay ? 'ON' : 'OFF'}'),
+                const SizedBox(height:10),
+                Row(children:[
+                  Expanded(child:OutlinedButton(onPressed:() async {try{await DriverApi.settle();await state.refreshFinance();if(context.mounted)toast(context,'Settlement created. Complete payment with your configured provider.');}catch(e){if(context.mounted)toast(context,e.toString().replaceFirst('Exception: ',''));}},child:const Text('Settle now'))),
+                  const SizedBox(width:8),
+                  Expanded(child:FilledButton.tonal(onPressed:() async {try{await DriverApi.autopay(enabled:!autopay,provider:'example',providerToken:autopay?null:'EXAMPLE_PROVIDER_TOKEN_REPLACE_ME');await state.refreshFinance();if(context.mounted)toast(context,autopay?'Autopay disabled.':'Autopay enabled. Replace the example provider token with a real provider mandate.');}catch(e){if(context.mounted)toast(context,e.toString().replaceFirst('Exception: ',''));}},child:Text(autopay?'Disable autopay':'Enable autopay')))
+                ])
+              ]),
             ),
           ),
           const SizedBox(height: 14),
@@ -353,6 +379,8 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final finance = AppScope.of(context).finance ?? const <String, dynamic>{};
+
     return Scaffold(
       appBar: AppBar(title: const Text('Withdraw funds')),
       body: ResponsivePage(
@@ -429,7 +457,10 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     children: [
-                      KeyValueRow(AppScope.of(context).t('Available', 'Linapatikana'), 'TZS 184,500'),
+                      KeyValueRow(
+                        AppScope.of(context).t('Available', 'Linapatikana'),
+                        'TZS ${finance['available_balance'] ?? finance['total_earnings'] ?? '0'}',
+                      ),
                       KeyValueRow('Withdrawal fee', 'TZS 1,000'),
                       KeyValueRow(AppScope.of(context).t('Processing', 'Inachakatwa'), 'Usually same day'),
                     ],
@@ -452,8 +483,23 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
                     confirm: AppScope.of(context).t('Withdraw', 'Toa'),
                   );
                   if (yes == true && context.mounted) {
-                    toast(context, 'Withdrawal request submitted successfully.');
-                    Navigator.pop(context);
+                    try {
+                      final amount = double.tryParse((finance['available_balance'] ?? finance['total_earnings'] ?? 0).toString()) ?? 0;
+                      await DriverApi.requestPayout(
+                        amount: amount > 0 ? amount : 10000,
+                        method: method,
+                        accountDetails: {'method': method},
+                      );
+                      await AppScope.of(context).refreshFinance();
+                      if (context.mounted) {
+                        toast(context, 'Withdrawal request submitted successfully.');
+                        Navigator.pop(context);
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        toast(context, e.toString().replaceFirst('Exception: ', ''));
+                      }
+                    }
                   }
                 },
               ),

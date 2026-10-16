@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/app_state.dart';
+import '../core/api/driver_api.dart';
 import '../core/mock_map.dart';
 import '../core/theme.dart';
 import '../core/widgets.dart';
@@ -37,7 +38,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            state.t('Welcome, Hassan', 'Karibu, Hassan'),
+                            '${state.t('Welcome', 'Karibu')}, ${state.displayName}',
                             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                                   fontWeight: FontWeight.w900,
                                 ),
@@ -83,13 +84,22 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             Switch(
                               value: state.online,
-                              onChanged: (value) {
-                                state.setOnline(value);
-                                if (value && !requestShown) {
-                                  setState(() => requestShown = true);
-                                  Future.delayed(const Duration(milliseconds: 450), () {
-                                    if (mounted) _showRideRequest();
-                                  });
+                              onChanged: (value) async {
+                                final messenger = ScaffoldMessenger.maybeOf(context);
+                                try {
+                                  await state.setOnlineRemote(value);
+                                  if (value && !requestShown) {
+                                    setState(() => requestShown = true);
+                                    Future.delayed(const Duration(milliseconds: 450), () {
+                                      if (mounted) _showRideRequest();
+                                    });
+                                  }
+                                } catch (e) {
+                                  if (mounted && messenger != null) {
+                                    messenger.showSnackBar(
+                                      SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                                    );
+                                  }
                                 }
                               },
                             ),
@@ -202,8 +212,24 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showRideRequest() {
+  Future<void> _showRideRequest() async {
     final state = AppScope.of(context);
+    Map<String,dynamic> request={};
+    try {
+      final result=await DriverApi.requests();
+      if(result['restricted']==true){
+        if(mounted) _showSettlementRequired(result);
+        return;
+      }
+      final list=List<dynamic>.from(result['requests']??result);
+      if(list.isEmpty) return;
+      request=Map<String,dynamic>.from(list.first);
+    } catch(e) { if(mounted) toast(context,e.toString().replaceFirst('Exception: ','')); return; }
+    if(!mounted) return;
+    final pickup=request['pickup_address']??'Nearby pickup';
+    final drop=request['destination_address']??'Destination';
+    final fare=(request['estimated_fare']??0).toString();
+
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -259,16 +285,16 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                   ),
                   const SizedBox(height: 16),
-                  _route(Icons.trip_origin, state.t('Pickup', 'Kuchukua'), 'Darajani Market, Zanzibar'),
+                  _route(Icons.trip_origin, state.t('Pickup', 'Kuchukua'), pickup),
                   _route(
                     Icons.location_on,
                     state.t('Drop-off', 'Kushusha'),
-                    'Abeid Amani Karume Airport',
+                    drop,
                   ),
                   const Divider(height: 28),
                   Row(
                     children: [
-                      Expanded(child: _info(state.t('Estimated fare', 'Nauli inayokadiriwa'), 'TZS 18,500')),
+                      Expanded(child: _info(state.t('Estimated fare', 'Nauli inayokadiriwa'), 'TZS $fare')),
                       Expanded(child: _info(state.t('ETA', 'Muda'), '16 min')),
                       Expanded(child: _info(state.t('Rider', 'Abiria'), '★ 4.8')),
                     ],
@@ -295,15 +321,15 @@ class _HomeScreenState extends State<HomeScreen> {
                           label: state.t('Accept', 'Kubali'),
                           icon: Icons.check,
                           onPressed: () async {
-                            await fakeDelay();
-                            if (sheetContext.mounted) Navigator.pop(sheetContext);
-                            if (mounted) {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const ActiveRideScreen(),
-                                ),
-                              );
+                            try {
+                              final rideId = request['id'].toString();
+                              await DriverApi.accept(rideId);
+                              AppScope.of(context).setActiveRideId(rideId);
+                              if (sheetContext.mounted) Navigator.pop(sheetContext);
+                              if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => ActiveRideScreen(rideId: rideId)));
+                            } catch(e) {
+                              if(sheetContext.mounted) Navigator.pop(sheetContext);
+                              if(mounted) toast(context,e.toString().replaceFirst('Exception: ',''));
                             }
                           },
                         ),
@@ -316,6 +342,44 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
+    );
+  }
+
+  void _showSettlementRequired(Map<String, dynamic> data) {
+    final appScope = AppScope.of(context);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    showDialog(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: const Text('Settlement required'),
+        content: Text(
+          'You have reached the TZS ${data['threshold'] ?? 60000} earning threshold. Amount owed to ZenjiGO: TZS ${data['commissionOwed'] ?? 0}. Settle the balance before accepting new rides. Nearby requests remain anonymized.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Close')),
+          FilledButton(
+            onPressed: () async {
+              Navigator.pop(d);
+              try {
+                await DriverApi.settle();
+                await appScope.refreshFinance();
+                if (mounted && messenger != null) {
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('Settlement created. Complete the payment through your configured provider.')),
+                  );
+                }
+              } catch (e) {
+                if (mounted && messenger != null) {
+                  messenger.showSnackBar(
+                    SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                  );
+                }
+              }
+            },
+            child: const Text('Start settlement'),
+          ),
+        ],
+      ),
     );
   }
 

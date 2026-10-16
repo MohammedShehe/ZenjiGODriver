@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:zenjigodriver/core/api/api_client.dart';
+import 'package:zenjigodriver/core/api/driver_api.dart';
 
 class AppState extends ChangeNotifier {
   ThemeMode themeMode = ThemeMode.dark;
@@ -6,19 +9,141 @@ class AppState extends ChangeNotifier {
   bool online = false;
   int navIndex = 0;
   String applicationStatus = 'Pending';
+  bool authenticated = false;
+  Map<String, dynamic>? profile;
+  Map<String, dynamic>? finance;
+  String? activeRideId;
 
-  void setTheme(ThemeMode mode) { themeMode = mode; notifyListeners(); }
+  AppState() {
+    _restore();
+  }
+
+  Future<void> _restore() async {
+    final p = await SharedPreferences.getInstance();
+    authenticated = p.getString('accessToken')?.isNotEmpty == true;
+    isSwahili = p.getBool('isSwahili') ?? false;
+    final theme = p.getString('themeMode');
+    if (theme == 'light') themeMode = ThemeMode.light;
+    if (theme == 'dark') themeMode = ThemeMode.dark;
+    if (authenticated) {
+      try {
+        await refreshProfile();
+        await refreshFinance();
+      } catch (_) {
+        authenticated = false;
+        await ApiClient.clear();
+      }
+    }
+    notifyListeners();
+  }
+
+  Future<void> login(Map<String, dynamic> data) async {
+    await ApiClient.save(data);
+    authenticated = true;
+    profile = Map<String, dynamic>.from(data['user'] ?? {});
+    applicationStatus = (profile?['application_status'] ??
+            profile?['applicationStatus'] ??
+            'Pending')
+        .toString();
+    online = (profile?['online'] ?? false) == true;
+    notifyListeners();
+    // Load full profile + finance in background
+    refreshProfile();
+    refreshFinance();
+  }
+
+  Future<void> logout() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rt = prefs.getString('refreshToken');
+      if (rt != null) {
+        await ApiClient.request('POST', '/auth/logout', body: {'refreshToken': rt}, auth: false);
+      }
+    } catch (_) {}
+    await ApiClient.clear();
+    authenticated = false;
+    profile = null;
+    finance = null;
+    online = false;
+    activeRideId = null;
+    applicationStatus = 'Pending';
+    notifyListeners();
+  }
+
+  Future<void> refreshProfile() async {
+    try {
+      profile = await DriverApi.profile();
+      applicationStatus = (profile?['application_status'] ??
+              profile?['applicationStatus'] ??
+              applicationStatus)
+          .toString();
+      online = (profile?['online'] ?? online) == true;
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  Future<void> refreshFinance() async {
+    try {
+      finance = await DriverApi.finance();
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  Future<void> setOnlineRemote(bool value) async {
+    await DriverApi.setOnline(value);
+    online = value;
+    notifyListeners();
+  }
+
+  void setTheme(ThemeMode mode) {
+    themeMode = mode;
+    SharedPreferences.getInstance().then((p) => p.setString(
+          'themeMode',
+          mode == ThemeMode.light ? 'light' : 'dark',
+        ));
+    notifyListeners();
+  }
+
   void toggleTheme(bool dark) => setTheme(dark ? ThemeMode.dark : ThemeMode.light);
-  void setLanguage(bool swahili) { isSwahili = swahili; notifyListeners(); }
-  void setOnline(bool value) { online = value; notifyListeners(); }
-  void setNav(int index) { navIndex = index; notifyListeners(); }
-  void setApplicationStatus(String status) { applicationStatus = status; notifyListeners(); }
+
+  void setLanguage(bool swahili) {
+    isSwahili = swahili;
+    SharedPreferences.getInstance().then((p) => p.setBool('isSwahili', swahili));
+    notifyListeners();
+  }
+
+  void setOnline(bool value) {
+    online = value;
+    notifyListeners();
+  }
+
+  void setNav(int index) {
+    navIndex = index;
+    notifyListeners();
+  }
+
+  void setApplicationStatus(String status) {
+    applicationStatus = status;
+    notifyListeners();
+  }
+
+  void setActiveRideId(String? id) {
+    activeRideId = id;
+    notifyListeners();
+  }
+
+  String get displayName {
+    final n = profile?['full_name'] ?? profile?['fullName'] ?? profile?['name'];
+    return (n == null || n.toString().isEmpty) ? 'Driver' : n.toString();
+  }
 
   /// Translate helper: returns Swahili when language is Kiswahili, otherwise English.
   String t(String en, String sw) => isSwahili ? sw : en;
 }
 
 class AppScope extends InheritedNotifier<AppState> {
-  const AppScope({super.key, required AppState notifier, required super.child}) : super(notifier: notifier);
-  static AppState of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<AppScope>()!.notifier!;
+  const AppScope({super.key, required AppState notifier, required super.child})
+      : super(notifier: notifier);
+  static AppState of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<AppScope>()!.notifier!;
 }

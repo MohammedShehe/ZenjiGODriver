@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'app_state.dart';
-import 'theme.dart';
 
 class ResponsivePage extends StatelessWidget {
   final Widget child;
@@ -27,7 +26,7 @@ class ZenjiLogo extends StatelessWidget {
       height: height,
       fit: BoxFit.contain,
       alignment: Alignment.center,
-      errorBuilder: (_, __, ___) => Icon(
+      errorBuilder: (context, error, stackTrace) => Icon(
         Icons.local_taxi_rounded,
         size: height * .8,
         color: Theme.of(context).colorScheme.primary,
