@@ -1,4 +1,4 @@
-package com.example.zenjigodriver
+package online.zenjigo.driver
 
 import io.flutter.embedding.android.FlutterActivity
 
