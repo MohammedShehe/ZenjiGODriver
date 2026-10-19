@@ -12,6 +12,28 @@ class DriverApi {
     return Map<String, dynamic>.from(d is Map ? d : {});
   }
 
+  static Future<Map<String, dynamic>> sendEmailOtp(String email, {String purpose = 'driver_registration'}) async {
+    final d = await ApiClient.data('POST', '/auth/driver/send-email-otp', body: {
+      'email': email,
+      'purpose': purpose,
+    }, auth: false);
+    return Map<String, dynamic>.from(d is Map ? d : {});
+  }
+
+  /// Validates a registration OTP without consuming it (backend uses peek/verify-check).
+  static Future<Map<String, dynamic>> verifyRegistrationOtp({
+    required String target,
+    required String code,
+    String purpose = 'driver_registration',
+  }) async {
+    final d = await ApiClient.data('POST', '/auth/driver/verify-otp', body: {
+      'target': target,
+      'code': code,
+      'purpose': purpose,
+    }, auth: false);
+    return Map<String, dynamic>.from(d is Map ? d : {});
+  }
+
   static Future<Map<String, dynamic>> login(String phone, String code) async {
     final d = await ApiClient.data('POST', '/auth/driver/login', body: {
       'phone': phone,
@@ -34,6 +56,7 @@ class DriverApi {
     required String vehicleColor,
     required int? modelYear,
     required String phoneOtpCode,
+    required String emailOtpCode,
     required Map<String, List<String>> files,
   }) async {
     final uri = Uri.parse('${ApiClient.baseUrl}/driver/register');
@@ -51,14 +74,16 @@ class DriverApi {
       'vehicleColor': vehicleColor,
       'modelYear': modelYear?.toString() ?? '',
       'phoneOtpCode': phoneOtpCode,
+      'emailOtpCode': emailOtpCode,
     });
     for (final entry in files.entries) {
       for (final path in entry.value) {
         req.files.add(await http.MultipartFile.fromPath(entry.key, path));
       }
     }
-    final res = await req.send();
-    final body = await res.stream.bytesToString();
+    final streamed = await req.send().timeout(ApiClient.requestTimeout);
+    final res = streamed;
+    final body = await res.stream.bytesToString().timeout(ApiClient.requestTimeout);
     final data = body.isEmpty ? <String, dynamic>{} : jsonDecode(body) as Map<String, dynamic>;
     if (res.statusCode < 200 || res.statusCode >= 300 || data['success'] == false) {
       throw Exception(data['message'] ?? 'Registration failed');

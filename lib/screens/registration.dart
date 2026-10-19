@@ -54,6 +54,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   _CountryCode country = _countries.first;
   bool phoneVerified = false;
   bool emailVerified = false;
+  bool phoneVerifying = false;
+  bool emailVerifying = false;
+  String? emailOtpCode;
+  bool acceptedTerms = false;
 
   @override
   void dispose() {
@@ -65,7 +69,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   Future<void> next() async {
     if (!(formKeys[step].currentState?.validate() ?? true)) return;
-    if (step == 0 && !phoneVerified) {
+    if (step == 0 && (!phoneVerified || !emailVerified)) {
       toast(context, AppScope.of(context).t('Verify your phone number and email before continuing.', 'Thibitisha namba ya simu na barua pepe kabla ya kuendelea.'));
       return;
     }
@@ -123,7 +127,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               child: LoadingButton(
                 label: step == 3 ? AppScope.of(context).t('Submit application', 'Wasilisha ombi') : AppScope.of(context).t('Continue', 'Endelea'),
                 icon: step == 3 ? Icons.send_rounded : Icons.arrow_forward_rounded,
-                onPressed: () async { await fakeDelay(); if (mounted) next(); },
+                onPressed: () async { await next(); },
               ),
             ),
           ]),
@@ -149,7 +153,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         const SizedBox(height: 14),
         _phoneField(),
         const SizedBox(height: 14),
-        _field(AppScope.of(context).t('Email', 'Barua pepe'), Icons.email_outlined, controller: emailController, keyboard: TextInputType.emailAddress),
+        _emailField(),
         const SizedBox(height: 14),
         _field(AppScope.of(context).t('National ID number', 'Namba ya kitambulisho cha taifa'), Icons.badge_outlined, controller: nationalIdController),
         const SizedBox(height: 14),
@@ -181,13 +185,21 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           child: TextFormField(
             controller: phoneController,
             keyboardType: TextInputType.phone,
-            onChanged: (_) { if (phoneVerified) setState(() => phoneVerified = false); },
+            onChanged: (_) { if (phoneVerified || phoneOtpCode != null) setState(() { phoneVerified = false; phoneOtpCode = null; }); },
             validator: (v) => (v == null || v.trim().isEmpty) ? AppScope.of(context).t('Phone number is required', 'Namba ya simu inahitajika') : null,
             decoration: InputDecoration(labelText: AppScope.of(context).t('Phone number', 'Namba ya simu'), hintText: '7XX XXX XXX', prefixIcon: const Icon(Icons.phone_outlined)),
           ),
         ),
         const SizedBox(width: 8),
-        SizedBox(height: 58, child: FilledButton.tonal(onPressed: _verifyPhone, child: Text(phoneVerified ? AppScope.of(context).t('Verified', 'Imethibitishwa') : AppScope.of(context).t('Verify', 'Thibitisha')))),
+        SizedBox(
+          height: 58,
+          child: FilledButton.tonal(
+            onPressed: phoneVerified || phoneVerifying ? null : _verifyPhone,
+            child: phoneVerifying
+                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4))
+                : Text(phoneVerified ? AppScope.of(context).t('Verified', 'Imethibitishwa') : AppScope.of(context).t('Verify', 'Thibitisha')),
+          ),
+        ),
       ]);
 
   Future<void> _pickCountry() async {
@@ -206,38 +218,131 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     }
   }
 
-  void _verifyPhone() async {
+  Widget _emailField() => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(
+          child: TextFormField(
+            controller: emailController,
+            keyboardType: TextInputType.emailAddress,
+            onChanged: (_) {
+              if (emailVerified || emailOtpCode != null) setState(() { emailVerified = false; emailOtpCode = null; });
+            },
+            validator: (v) {
+              final value = (v ?? '').trim();
+              if (value.isEmpty) return AppScope.of(context).t('Email is required', 'Barua pepe inahitajika');
+              if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value)) {
+                return AppScope.of(context).t('Enter a valid email', 'Ingiza barua pepe sahihi');
+              }
+              return null;
+            },
+            decoration: InputDecoration(
+              labelText: AppScope.of(context).t('Email', 'Barua pepe'),
+              prefixIcon: const Icon(Icons.email_outlined),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          height: 58,
+          child: FilledButton.tonal(
+            onPressed: emailVerified || emailVerifying ? null : _verifyEmail,
+            child: emailVerifying
+                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4))
+                : Text(emailVerified ? AppScope.of(context).t('Verified', 'Imethibitishwa') : AppScope.of(context).t('Verify', 'Thibitisha')),
+          ),
+        ),
+      ]);
+
+  Future<void> _verifyPhone() async {
     if (phoneController.text.trim().isEmpty) {
       toast(context, AppScope.of(context).t('Enter your phone number first.', 'Ingiza namba ya simu kwanza.'));
       return;
     }
+    if (phoneVerifying) return;
+    setState(() => phoneVerifying = true);
     try {
-      final phone='${country.dial}${phoneController.text.trim()}';
-      await DriverApi.sendOtp(phone,purpose:'driver_registration');
-      if(!mounted)return;
-      final codeCtrl=TextEditingController();
-      final code=await showDialog<String>(context:context,builder:(d)=>AlertDialog(
-        title:Text(AppScope.of(context).t('Enter phone OTP','Ingiza OTP ya simu')),
-        content:TextField(controller:codeCtrl,keyboardType:TextInputType.number,maxLength:8,decoration:const InputDecoration(labelText:'OTP code')),
-        actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(d,codeCtrl.text.trim()),child:const Text('Continue'))],
-      ));
-      codeCtrl.dispose();
-      if(code!=null && code.isNotEmpty && mounted){setState(()=>phoneOtpCode=code);setState(()=>phoneVerified=true);toast(context,AppScope.of(context).t('Phone OTP saved. It will be verified when the application is submitted.','OTP ya simu imehifadhiwa. Itathibitishwa wakati wa kutuma ombi.'));}
-    } catch(e){if(mounted)toast(context,e.toString().replaceFirst('Exception: ',''));}
+      final phone = '${country.dial}${phoneController.text.trim()}';
+      await DriverApi.sendOtp(phone, purpose: 'driver_registration');
+      if (!mounted) return;
+      final code = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (d) => _OtpCodeDialog(
+          title: AppScope.of(context).t('Enter phone OTP', 'Ingiza OTP ya simu'),
+          label: AppScope.of(context).t('OTP code', 'Namba ya OTP'),
+          cancelLabel: AppScope.of(context).t('Cancel', 'Ghairi'),
+          confirmLabel: AppScope.of(context).t('Confirm', 'Thibitisha'),
+        ),
+      );
+      if (code == null || code.isEmpty || !mounted) return;
+      // Confirm OTP is valid against backend (does not consume it — register will verify again)
+      await DriverApi.verifyRegistrationOtp(target: phone, code: code, purpose: 'driver_registration');
+      if (!mounted) return;
+      setState(() {
+        phoneOtpCode = code;
+        phoneVerified = true;
+      });
+      toast(context, AppScope.of(context).t('Phone number verified.', 'Namba ya simu imethibitishwa.'));
+    } catch (e) {
+      if (mounted) toast(context, e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => phoneVerifying = false);
+    }
+  }
+
+  Future<void> _verifyEmail() async {
+    final email = emailController.text.trim();
+    if (email.isEmpty) {
+      toast(context, AppScope.of(context).t('Enter your email first.', 'Ingiza barua pepe kwanza.'));
+      return;
+    }
+    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+      toast(context, AppScope.of(context).t('Enter a valid email address.', 'Ingiza barua pepe sahihi.'));
+      return;
+    }
+    if (emailVerifying) return;
+    setState(() => emailVerifying = true);
+    try {
+      await DriverApi.sendEmailOtp(email, purpose: 'driver_registration');
+      if (!mounted) return;
+      final code = await showDialog<String>(
+        context: context,
+        barrierDismissible: false,
+        builder: (d) => _OtpCodeDialog(
+          title: AppScope.of(context).t('Enter email OTP', 'Ingiza OTP ya barua pepe'),
+          label: AppScope.of(context).t('OTP code', 'Namba ya OTP'),
+          cancelLabel: AppScope.of(context).t('Cancel', 'Ghairi'),
+          confirmLabel: AppScope.of(context).t('Confirm', 'Thibitisha'),
+        ),
+      );
+      if (code == null || code.isEmpty || !mounted) return;
+      await DriverApi.verifyRegistrationOtp(target: email, code: code, purpose: 'driver_registration');
+      if (!mounted) return;
+      setState(() {
+        emailOtpCode = code;
+        emailVerified = true;
+      });
+      toast(context, AppScope.of(context).t('Email verified.', 'Barua pepe imethibitishwa.'));
+    } catch (e) {
+      if (mounted) toast(context, e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => emailVerifying = false);
+    }
   }
 
   Future<void> _submitRegistration() async {
     if(!phoneVerified || phoneOtpCode==null){toast(context,AppScope.of(context).t('Verify your phone first.','Thibitisha simu kwanza.'));return;}
+    if(!emailVerified || emailOtpCode==null){toast(context,AppScope.of(context).t('Verify your email first.','Thibitisha barua pepe kwanza.'));return;}
     if(emailController.text.trim().isEmpty || nationalIdController.text.trim().isEmpty || plateController.text.trim().isEmpty){toast(context,AppScope.of(context).t('Complete the required personal and vehicle fields.','Jaza taarifa zinazohitajika.'));return;}
     final requiredFiles=['license','nationalId','insurance','driverPhoto'];
     if(requiredFiles.any((k)=>selectedFiles[k]==null || selectedFiles[k]!.isEmpty)){toast(context,AppScope.of(context).t('Upload your license, national ID, insurance and driver photo.','Pakia leseni, kitambulisho, bima na picha ya dereva.'));return;}
+    if (!acceptedTerms) { toast(context, AppScope.of(context).t('Please confirm the information is accurate before submitting.', 'Thibitisha kuwa taarifa ni sahihi kabla ya kutuma.')); return; }
     try{
       final result=await DriverApi.register(
         fullName:nameController.text.trim(),phone:'${country.dial}${phoneController.text.trim()}',
         email:emailController.text.trim(),nationalId:nationalIdController.text.trim(),homeAddress:addressController.text.trim(),
         vehicleType:vehicle.toLowerCase(),plateNumber:plateController.text.trim(),vehicleMake:makeController.text.trim(),
         vehicleModel:modelController.text.trim(),vehicleColor:colorController.text.trim(),modelYear:int.tryParse(yearController.text.trim()),
-        phoneOtpCode:phoneOtpCode!,files:selectedFiles);
+        phoneOtpCode:phoneOtpCode!,emailOtpCode:emailOtpCode!,files:selectedFiles);
       if(!mounted)return;
       toast(context,AppScope.of(context).t('Application submitted successfully.','Ombi limetumwa kwa mafanikio.'));
       Navigator.pushReplacement(context,MaterialPageRoute(builder:(_)=>ApplicationTrackingScreen(driverId:result['driverId'].toString())));
@@ -253,7 +358,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   Widget _documents() => _wrap(2, AppScope.of(context).t('Documents & photos', 'Nyaraka na picha'), AppScope.of(context).t('Upload clear, current documents. Admin will verify them manually.', 'Pakia nyaraka wazi za sasa. Msimamizi atazithibitisha kwa mikono.'), [
         _upload(AppScope.of(context).t("Driver's license", 'Leseni ya dereva'), AppScope.of(context).t('Front or PDF', 'Mbele au PDF'), Icons.credit_card),
-        _upload(AppScope.of(context).t('Zanzibar / Tanzania ID', 'Kitambulisho cha Zanzibar / Tanzania'), AppScope.of(context).t('Front and back', 'Mbele na nyuma'), Icons.badge_outlined),
+        _upload(AppScope.of(context).t('Zanzibar / Tanzania ID', 'Kitambulisho cha Zanzibar / Tanzania'), AppScope.of(context).t('Front and back', 'Mbele na nyuma'), Icons.badge_outlined, multiple: true),
         _upload(AppScope.of(context).t('Insurance', 'Bima'), AppScope.of(context).t('Valid insurance document', 'Nyaraka halali ya bima'), Icons.verified_user_outlined),
         _upload(AppScope.of(context).t('Vehicle photos', 'Picha za gari'), AppScope.of(context).t('Up to 5 exterior/interior photos', 'Hadi picha 5 za nje/ndani'), Icons.photo_library_outlined, multiple: true),
         _upload(AppScope.of(context).t('Driver photo', 'Picha ya dereva'), AppScope.of(context).t('Clear face photo', 'Picha wazi ya uso'), Icons.add_a_photo_outlined),
@@ -261,14 +366,14 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   Widget _review() => _wrap(3, AppScope.of(context).t('Review application', 'Kagua ombi'), AppScope.of(context).t('Confirm the details below before submitting for manual verification.', 'Thibitisha maelezo yaliyo hapa chini kabla ya kuwasilisha kwa uthibitisho wa mikono.'), [
         Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-          KeyValueRow(AppScope.of(context).t('Name', 'Jina'), 'Hassan Ali'),
-          KeyValueRow(AppScope.of(context).t('Phone', 'Simu'), '${country.dial} ${phoneController.text.isEmpty ? '712 345 678' : phoneController.text}'),
-          KeyValueRow(AppScope.of(context).t('Email', 'Barua pepe'), 'hassan@example.com'),
-          KeyValueRow(AppScope.of(context).t('Vehicle', 'Gari'), 'Taxi • Toyota • Z 123 ABC'),
-          KeyValueRow(AppScope.of(context).t('Documents', 'Nyaraka'), AppScope.of(context).t('5 document groups attached', 'Vikundi 5 vya nyaraka vimeambatishwa')),
+          KeyValueRow(AppScope.of(context).t('Name', 'Jina'), nameController.text.trim().isEmpty ? '—' : nameController.text.trim()),
+          KeyValueRow(AppScope.of(context).t('Phone', 'Simu'), '${country.dial} ${phoneController.text.trim()}'),
+          KeyValueRow(AppScope.of(context).t('Email', 'Barua pepe'), emailController.text.trim().isEmpty ? '—' : emailController.text.trim()),
+          KeyValueRow(AppScope.of(context).t('Vehicle', 'Gari'), '${vehicle} • ${makeController.text.trim()} ${modelController.text.trim()} • ${plateController.text.trim()}'),
+          KeyValueRow(AppScope.of(context).t('Documents', 'Nyaraka'), selectedFiles.values.fold<int>(0, (sum, files) => sum + files.length).toString() + ' file(s) selected'),
         ]))),
         const SizedBox(height: 14),
-        CheckboxListTile(contentPadding: EdgeInsets.zero, value: true, onChanged: (_) {}, title: Text(AppScope.of(context).t('I confirm the information provided is accurate.', 'Ninathibitisha taarifa zilizotolewa ni sahihi.')), subtitle: Text(AppScope.of(context).t('False or expired documents can cause application rejection.', 'Nyaraka za uongo au zilizoisha zinaweza kusababisha kukataliwa kwa ombi.'))),
+        CheckboxListTile(contentPadding: EdgeInsets.zero, value: acceptedTerms, onChanged: (v) => setState(() => acceptedTerms = v ?? false), title: Text(AppScope.of(context).t('I confirm the information provided is accurate.', 'Ninathibitisha taarifa zilizotolewa ni sahihi.')), subtitle: Text(AppScope.of(context).t('False or expired documents can cause application rejection.', 'Nyaraka za uongo au zilizoisha zinaweza kusababisha kukataliwa kwa ombi.'))),
       ]);
 
   Widget _field(String label, IconData icon, {bool required = true, TextEditingController? controller, TextInputType? keyboard}) => TextFormField(
@@ -278,24 +383,95 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
       );
 
-  Widget _upload(String title, String sub, IconData icon, {bool multiple = false}) => Card(
-  margin: const EdgeInsets.only(bottom: 12),
-  child: ListTile(
-    contentPadding: const EdgeInsets.all(14),
-    leading: CircleAvatar(child: Icon(icon)),
-    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-    subtitle: Text(selectedFiles[_fileKey(title)]?.isNotEmpty==true ? '${selectedFiles[_fileKey(title)]!.length} file(s) selected' : sub),
-    trailing: FilledButton.tonal(
-      onPressed: () async {
-        final result=await FilePicker.platform.pickFiles(allowMultiple: multiple,type:FileType.any);
-        if(result!=null){
-          setState(()=>selectedFiles[_fileKey(title)]=result.paths.whereType<String>().toList());
-        }
-      },
-      child: Text(AppScope.of(context).t('Upload', 'Pakia')),
-    ),
-  ),
-);
+  Widget _upload(String title, String sub, IconData icon, {bool multiple = false}) {
+    final key = _fileKey(title);
+    final paths = selectedFiles[key] ?? const <String>[];
+    final t = AppScope.of(context);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            CircleAvatar(child: Icon(icon)),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 3),
+              Text(paths.isEmpty ? sub : '${paths.length} file(s) selected',
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .65))),
+            ])),
+            FilledButton.tonal(
+              onPressed: () async {
+                try {
+                  final result = await FilePicker.platform.pickFiles(
+                    allowMultiple: multiple,
+                    type: FileType.custom,
+                    allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
+                    withData: false,
+                    lockParentWindow: true,
+                  );
+                  if (!mounted || result == null) return;
+                  final picked = result.files.where((f) => f.path != null).toList();
+                  if (picked.isEmpty) {
+                    toast(context, t.t('Could not access the selected file. Please choose a file stored on this device.', 'Haiwezi kufikia faili lililochaguliwa.'));
+                    return;
+                  }
+                  final valid = picked.where((f) {
+                    final ext = (f.extension ?? '').toLowerCase();
+                    return const {'jpg', 'jpeg', 'png', 'webp', 'pdf'}.contains(ext);
+                  }).toList();
+                  if (valid.length != picked.length) {
+                    toast(context, t.t('Only JPG, PNG, WEBP and PDF files are supported.', 'Aina za JPG, PNG, WEBP na PDF pekee zinakubaliwa.'));
+                  }
+                  if (valid.isEmpty) return;
+                  final existing = multiple ? List<String>.from(paths) : <String>[];
+                  for (final file in valid) {
+                    if (!existing.contains(file.path)) existing.add(file.path!);
+                  }
+                  final maxAllowed = key == 'nationalId' ? 2 : 5;
+                  if (multiple && existing.length > maxAllowed) {
+                    toast(context, t.t('You can select up to $maxAllowed files here.', 'Unaweza kuchagua faili hadi $maxAllowed hapa.'));
+                    return;
+                  }
+                  setState(() => selectedFiles[key] = existing);
+                } catch (e) {
+                  if (mounted) toast(context, t.t('Unable to open files. Please try again.', 'Imeshindwa kufungua faili. Jaribu tena.'));
+                }
+              },
+              child: Text(paths.isEmpty ? t.t('Choose files', 'Chagua faili') : t.t('Add / replace', 'Ongeza / badilisha')),
+            ),
+          ]),
+          if (paths.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ...paths.asMap().entries.map((entry) {
+              final path = entry.value;
+              final filename = path.replaceAll('\\', '/').split('/').last;
+              return Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(children: [
+                  Icon(filename.toLowerCase().endsWith('.pdf') ? Icons.picture_as_pdf_outlined : Icons.image_outlined, size: 19),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(filename, maxLines: 2, overflow: TextOverflow.ellipsis)),
+                  IconButton(
+                    tooltip: t.t('Remove file', 'Ondoa faili'),
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setState(() {
+                      final updated = List<String>.from(selectedFiles[key] ?? []);
+                      updated.removeAt(entry.key);
+                      selectedFiles[key] = updated;
+                    }),
+                    icon: const Icon(Icons.close_rounded, size: 19),
+                  ),
+                ]),
+              );
+            }),
+          ],
+        ]),
+      ),
+    );
+  }
+
 String _fileKey(String title) {
   final l = title.toLowerCase();
   if (l.contains('license') && !l.contains('insurance')) {
@@ -313,6 +489,54 @@ String _fileKey(String title) {
   return 'driverPhoto';
 }
 
+}
+
+
+
+/// Owns its TextEditingController so it is disposed only after the dialog unmounts.
+class _OtpCodeDialog extends StatefulWidget {
+  final String title;
+  final String label;
+  final String cancelLabel;
+  final String confirmLabel;
+  const _OtpCodeDialog({
+    required this.title,
+    required this.label,
+    required this.cancelLabel,
+    required this.confirmLabel,
+  });
+
+  @override
+  State<_OtpCodeDialog> createState() => _OtpCodeDialogState();
+}
+
+class _OtpCodeDialogState extends State<_OtpCodeDialog> {
+  late final TextEditingController _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: TextField(
+        controller: _ctrl,
+        keyboardType: TextInputType.number,
+        maxLength: 8,
+        autofocus: true,
+        decoration: InputDecoration(labelText: widget.label),
+        onSubmitted: (v) => Navigator.pop(context, v.trim()),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(widget.cancelLabel)),
+        FilledButton(onPressed: () => Navigator.pop(context, _ctrl.text.trim()), child: Text(widget.confirmLabel)),
+      ],
+    );
+  }
 }
 
 class _CountryPicker extends StatefulWidget {
