@@ -62,3 +62,10 @@ This build intentionally removes phone verification from driver sign-in. If the 
 ## Important verification note
 
 This ZIP contains source code, not a signed release build. It was updated in this environment but could not be compiled or exercised against your deployed backend because Flutter tooling and live backend credentials were unavailable here. Before release, run `flutter pub get`, `flutter analyze`, and test each ride status transition with your staging backend. Payment-provider settlement, push notifications, and rider reporting still depend on the backend/provider being configured.
+
+## Driver authentication: email OTP only
+
+The driver app does not perform phone verification. Driver sign-in uses email OTP.
+During driver registration, a phone number may still be collected as a contact/profile
+field if required by the backend, but the app does not send an SMS OTP or require
+phone verification. Email verification remains enabled.

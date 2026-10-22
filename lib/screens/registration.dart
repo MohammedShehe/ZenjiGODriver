@@ -48,13 +48,10 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final modelController = TextEditingController();
   final colorController = TextEditingController();
   final yearController = TextEditingController();
-  String? phoneOtpCode;
   final Map<String, List<String>> selectedFiles = {};
   String vehicle = 'Taxi';
   _CountryCode country = _countries.first;
-  bool phoneVerified = false;
   bool emailVerified = false;
-  bool phoneVerifying = false;
   bool emailVerifying = false;
   String? emailOtpCode;
   bool acceptedTerms = false;
@@ -69,8 +66,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   Future<void> next() async {
     if (!(formKeys[step].currentState?.validate() ?? true)) return;
-    if (step == 0 && (!phoneVerified || !emailVerified)) {
-      toast(context, AppScope.of(context).t('Verify your phone number and email before continuing.', 'Thibitisha namba ya simu na barua pepe kabla ya kuendelea.'));
+    if (step == 0 && !emailVerified) {
+      toast(context, AppScope.of(context).t('Verify your email before continuing.', 'Thibitisha barua pepe kabla ya kuendelea.'));
       return;
     }
     if (step < 3) {
@@ -148,7 +145,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         ),
       );
 
-  Widget _personal() => _wrap(0, AppScope.of(context).t('Personal details', 'Taarifa binafsi'), AppScope.of(context).t('Tell us who you are. Phone and email are verified using OTP.', 'Tuambie wewe ni nani. Simu na barua pepe zinathibitishwa kwa OTP.'), [
+  Widget _personal() => _wrap(0, AppScope.of(context).t('Personal details', 'Taarifa binafsi'), AppScope.of(context).t('Tell us who you are. Verify your email to continue; phone verification is not required.', 'Tuambie wewe ni nani. Thibitisha barua pepe ili kuendelea; uthibitisho wa simu hauhitajiki.'), [
         _field(AppScope.of(context).t('Full name', 'Jina kamili'), Icons.person_outline, controller: nameController),
         const SizedBox(height: 14),
         _phoneField(),
@@ -185,19 +182,14 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           child: TextFormField(
             controller: phoneController,
             keyboardType: TextInputType.phone,
-            onChanged: (_) { if (phoneVerified || phoneOtpCode != null) setState(() { phoneVerified = false; phoneOtpCode = null; }); },
-            validator: (v) => (v == null || v.trim().isEmpty) ? AppScope.of(context).t('Phone number is required', 'Namba ya simu inahitajika') : null,
-            decoration: InputDecoration(labelText: AppScope.of(context).t('Phone number', 'Namba ya simu'), hintText: '7XX XXX XXX', prefixIcon: const Icon(Icons.phone_outlined)),
-          ),
-        ),
-        const SizedBox(width: 8),
-        SizedBox(
-          height: 58,
-          child: FilledButton.tonal(
-            onPressed: phoneVerified || phoneVerifying ? null : _verifyPhone,
-            child: phoneVerifying
-                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.4))
-                : Text(phoneVerified ? AppScope.of(context).t('Verified', 'Imethibitishwa') : AppScope.of(context).t('Verify', 'Thibitisha')),
+            validator: (v) => (v == null || v.trim().isEmpty)
+                ? AppScope.of(context).t('Phone number is required', 'Namba ya simu inahitajika')
+                : null,
+            decoration: InputDecoration(
+              labelText: AppScope.of(context).t('Phone number (contact only)', 'Namba ya simu (mawasiliano tu)'),
+              hintText: '7XX XXX XXX',
+              prefixIcon: const Icon(Icons.phone_outlined),
+            ),
           ),
         ),
       ]);
@@ -212,9 +204,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     if (result != null && mounted) {
       setState(() {
         country = result;
-        phoneVerified = false;
       });
-      toast(context, '${AppScope.of(context).t('Phone verification reset for', 'Uthibitisho wa simu umeanzishwa upya kwa')} ${result.dial}.');
     }
   }
 
@@ -251,43 +241,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           ),
         ),
       ]);
-
-  Future<void> _verifyPhone() async {
-    if (phoneController.text.trim().isEmpty) {
-      toast(context, AppScope.of(context).t('Enter your phone number first.', 'Ingiza namba ya simu kwanza.'));
-      return;
-    }
-    if (phoneVerifying) return;
-    setState(() => phoneVerifying = true);
-    try {
-      final phone = '${country.dial}${phoneController.text.trim()}';
-      await DriverApi.sendOtp(phone: phone, email: emailController.text.trim(), purpose: 'driver_registration');
-      if (!mounted) return;
-      final code = await showDialog<String>(
-        context: context,
-        barrierDismissible: false,
-        builder: (d) => _OtpCodeDialog(
-          title: AppScope.of(context).t('Enter phone OTP', 'Ingiza OTP ya simu'),
-          label: AppScope.of(context).t('OTP code', 'Namba ya OTP'),
-          cancelLabel: AppScope.of(context).t('Cancel', 'Ghairi'),
-          confirmLabel: AppScope.of(context).t('Confirm', 'Thibitisha'),
-        ),
-      );
-      if (code == null || code.isEmpty || !mounted) return;
-      // Confirm OTP is valid against backend (does not consume it — register will verify again)
-      await DriverApi.verifyRegistrationOtp(target: phone, code: code, purpose: 'driver_registration');
-      if (!mounted) return;
-      setState(() {
-        phoneOtpCode = code;
-        phoneVerified = true;
-      });
-      toast(context, AppScope.of(context).t('Phone number verified.', 'Namba ya simu imethibitishwa.'));
-    } catch (e) {
-      if (mounted) toast(context, e.toString().replaceFirst('Exception: ', ''));
-    } finally {
-      if (mounted) setState(() => phoneVerifying = false);
-    }
-  }
 
   Future<void> _verifyEmail() async {
     final email = emailController.text.trim();
@@ -330,7 +283,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   }
 
   Future<void> _submitRegistration() async {
-    if(!phoneVerified || phoneOtpCode==null){toast(context,AppScope.of(context).t('Verify your phone first.','Thibitisha simu kwanza.'));return;}
     if(!emailVerified || emailOtpCode==null){toast(context,AppScope.of(context).t('Verify your email first.','Thibitisha barua pepe kwanza.'));return;}
     if(emailController.text.trim().isEmpty || nationalIdController.text.trim().isEmpty || plateController.text.trim().isEmpty){toast(context,AppScope.of(context).t('Complete the required personal and vehicle fields.','Jaza taarifa zinazohitajika.'));return;}
     final requiredFiles=['license','nationalId','insurance','driverPhoto'];

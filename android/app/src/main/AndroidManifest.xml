@@ -3,13 +3,13 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <application
-        android:label="RIDE EASE"
+        android:label="Ride Ease"
         android:name="${applicationName}"
         android:usesCleartextTraffic="true"
         android:icon="@mipmap/ic_launcher">
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyD2_9WpUt3D0SlOJTMKY5kK_omBZ0tUhC4" />
+            android:value="AIzaSyBX93zeEULXrhxlvkNefmoFcYDGizvvSpU" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
