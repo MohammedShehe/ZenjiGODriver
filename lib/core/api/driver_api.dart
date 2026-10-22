@@ -241,6 +241,10 @@ class DriverApi {
     await ApiClient.data('POST', '/driver/chat/$conversationId/read');
   }
 
+  static Future<void> deleteMessage(String conversationId, String messageId) async {
+    await ApiClient.data('DELETE', '/driver/chat/$conversationId/messages/$messageId');
+  }
+
   static Future<Map<String, dynamic>> sendMessage(String conversationId, String text) async {
     final d = await ApiClient.data('POST', '/driver/chat/$conversationId/messages', body: {
       'text': text,

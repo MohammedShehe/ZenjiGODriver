@@ -1,567 +1,243 @@
 import 'package:flutter/material.dart';
-import 'package:zenjigodriver/core/app_state.dart';
-import 'package:zenjigodriver/core/api/driver_api.dart';
-
+import '../core/api/driver_api.dart';
+import '../core/app_state.dart';
 import '../core/theme.dart';
 import '../core/widgets.dart';
 
-class EarningsScreen extends StatelessWidget {
+class EarningsScreen extends StatefulWidget {
   const EarningsScreen({super.key});
+  @override
+  State<EarningsScreen> createState() => _EarningsScreenState();
+}
+
+class _EarningsScreenState extends State<EarningsScreen> {
+  bool loading = true;
+  String? error;
+  Map<String, dynamic> finance = {};
+  Map<String, dynamic> earnings = {};
+  List<dynamic> rides = [];
+  List<dynamic> settlements = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  num _n(Map m, List<String> keys) {
+    for (final k in keys) {
+      final v = m[k];
+      if (v is num) return v;
+      if (v != null) return num.tryParse(v.toString()) ?? 0;
+    }
+    return 0;
+  }
+
+  String _money(num v) => v.toStringAsFixed(v == v.roundToDouble() ? 0 : 2);
+  String _date(dynamic v) {
+    if (v == null) return '—';
+    final d = DateTime.tryParse(v.toString());
+    return d == null ? v.toString() : '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+  }
+
+  Future<void> _load() async {
+    if (mounted) setState(() { loading = true; error = null; });
+    try {
+      final results = await Future.wait([
+        DriverApi.finance(),
+        DriverApi.earnings(),
+        DriverApi.history(limit: 30),
+        DriverApi.settlements(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        finance = Map<String, dynamic>.from(results[0] as Map);
+        earnings = Map<String, dynamic>.from(results[1] as Map);
+        rides = List<dynamic>.from(results[2] as List);
+        settlements = List<dynamic>.from(results[3] as List);
+        loading = false;
+      });
+      AppScope.of(context).refreshFinance();
+    } catch (e) {
+      if (mounted) setState(() { error = e.toString().replaceFirst('Exception: ', ''); loading = false; });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.of(context);
-    final f = state.finance ?? const <String,dynamic>{};
-    final owed = (f['commission_owed'] ?? 0).toString();
-    final gross = (f['gross_since_settlement'] ?? 0).toString();
-    final blocked = f['blocked'] == 1 || f['blocked'] == true;
-    final autopay = f['autopay_enabled'] == 1 || f['autopay_enabled'] == true;
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(18),
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  AppScope.of(context).t('Earnings & Wallet', 'Mapato na Pochi'),
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w900,
-                      ),
-                ),
-              ),
-              IconButton.filledTonal(
-                onPressed: () => _history(context),
-                icon: const Icon(Icons.history),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    AppScope.of(context).t('Available balance', 'Salio linalopatikana'),
-                    style: TextStyle(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(alpha: .62),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'TZS ${f['available_balance'] ?? f['total_earnings'] ?? '0'}',
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.w900,
-                        ),
-                  ),
-                  const SizedBox(height: 16),
-                  LoadingButton(
-                    label: 'Withdraw funds',
-                    icon: Icons.account_balance_wallet_outlined,
-                    onPressed: () async {
-                      await fakeDelay(300);
-                      if (context.mounted) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const WithdrawScreen(),
-                          ),
-                        );
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
+    final s = AppScope.of(context);
+    final stateFinance = s.finance ?? {};
+    final f = finance.isNotEmpty ? finance : stateFinance;
+    final profile = s.profile ?? <String, dynamic>{};
+    final balance = _n(profile, ['total_earnings', 'totalEarnings', 'available_balance', 'availableBalance']);
+    final total = _n(earnings, ['total', 'totalEarnings']);
+    final owed = _n(f, ['commission_owed', 'commissionOwed']);
+    final gross = _n(f, ['gross_since_settlement', 'grossSinceSettlement']);
+    final blocked = f['blocked'] == true || f['blocked'] == 1;
+    final autopay = f['autopay_enabled'] == true || f['autopay_enabled'] == 1 || f['autopayEnabled'] == true;
+    final days = (earnings['days'] is List) ? List<dynamic>.from(earnings['days']) : <dynamic>[];
+
+    return SafeArea(child: RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(padding: const EdgeInsets.all(16), children: [
+        Row(children: [
+          Expanded(child: Text(s.t('Earnings & Wallet', 'Mapato na Pochi'),
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900))),
+          IconButton.filledTonal(onPressed: () => _showHistory(context), icon: const Icon(Icons.history)),
+          IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+        ]),
+        if (loading) const LinearProgressIndicator(),
+        if (error != null) Card(child: Padding(padding: const EdgeInsets.all(14), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Icon(Icons.cloud_off_outlined), const SizedBox(height: 8),
+          Text(error!, style: const TextStyle(fontWeight: FontWeight.w700)),
+          Align(alignment: Alignment.centerRight, child: TextButton.icon(onPressed: _load, icon: const Icon(Icons.refresh), label: const Text('Retry'))),
+        ]))),
+        Card(child: Padding(padding: const EdgeInsets.all(20), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(s.t('Available balance / lifetime earnings', 'Salio / mapato ya jumla'), style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .65))),
+          const SizedBox(height: 6),
+          Text('TZS ${_money(balance)}', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w900)),
+          const SizedBox(height: 6),
+          Text('Last 30 days: TZS ${_money(total)}'),
           const SizedBox(height: 14),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children:[
-                Row(children:[const Icon(Icons.account_balance_outlined),const SizedBox(width:8),const Expanded(child:Text('ZenjiGO settlement',style:TextStyle(fontWeight:FontWeight.w900))),if(blocked) const Pill('RESTRICTED')]),
-                const SizedBox(height:8),
-                Text('Gross since last settlement: TZS $gross'),
-                Text('Commission owed: TZS $owed'),
-                Text('Autopay: ${autopay ? 'ON' : 'OFF'}'),
-                const SizedBox(height:10),
-                Row(children:[
-                  Expanded(child:OutlinedButton(onPressed:() async {try{await DriverApi.settle();await state.refreshFinance();if(context.mounted)toast(context,'Settlement created. Complete payment with your configured provider.');}catch(e){if(context.mounted)toast(context,e.toString().replaceFirst('Exception: ',''));}},child:const Text('Settle now'))),
-                  const SizedBox(width:8),
-                  Expanded(child:FilledButton.tonal(onPressed:() async {try{await DriverApi.autopay(enabled:!autopay);await state.refreshFinance();if(context.mounted)toast(context,autopay?'Autopay disabled.':'Autopay request submitted; provider confirmation is required.');}catch(e){if(context.mounted)toast(context,e.toString().replaceFirst('Exception: ',''));}},child:Text(autopay?'Disable autopay':'Enable autopay')))
-                ])
-              ]),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(child: _summary(context, AppScope.of(context).t('Today', 'Leo'), '${f['today_earnings'] ?? f['todayEarnings'] ?? 0}', '${f['today_trips'] ?? f['todayTrips'] ?? 0} rides')),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _summary(context, AppScope.of(context).t('This week', 'Wiki hii'), '${f['week_earnings'] ?? f['weekEarnings'] ?? 0}', '${f['week_trips'] ?? f['weekTrips'] ?? 0} rides'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          const SectionTitle('Weekly earnings'),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                children: [
-                  SizedBox(
-                    height: 180,
-                    child: CustomPaint(
-                      painter: EarningsChartPainter(
-                        Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
-                    children: [
-                      Text('Mon'),
-                      Text('Tue'),
-                      Text('Wed'),
-                      Text('Thu'),
-                      Text('Fri'),
-                      Text('Sat'),
-                      Text('Sun'),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          SectionTitle(AppScope.of(context).t('Commission breakdown', 'Mgawanyo wa kamisheni')),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _share(
-                          context,
-                          AppScope.of(context).t('Driver share', 'Sehemu ya dereva'),
-                          '80%',
-                          'TZS 214,400',
-                          ZenjiColors.green,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _share(
-                          context,
-                          'ZenjiGO',
-                          '20%',
-                          'TZS 53,600',
-                          Theme.of(context).colorScheme.secondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(99),
-                    child: LinearProgressIndicator(
-                      value: .8,
-                      minHeight: 12,
-                      color: ZenjiColors.green,
-                      backgroundColor: Theme.of(context)
-                          .colorScheme
-                          .secondary
-                          .withValues(alpha: .22),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          SectionTitle(AppScope.of(context).t('Bonus & incentives', 'Bonasi na motisha')),
-          _incentive(
-            context,
-            'Weekend streak',
-            'Complete 12 rides Fri–Sun',
-            '8 / 12',
-            'TZS 25,000',
-            .67,
-          ),
-          _incentive(
-            context,
-            'High rating bonus',
-            'Maintain 4.8+ rating this week',
-            '4.9 rating',
-            'TZS 10,000',
-            .92,
-          ),
-          const SizedBox(height: 18),
-        ],
-      ),
-    );
+          LoadingButton(label: s.t('Request payout', 'Omba malipo'), icon: Icons.account_balance_wallet_outlined,
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WithdrawScreen())).then((_) => _load())),
+        ]))),
+        Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [const Icon(Icons.account_balance_outlined), const SizedBox(width: 8), const Expanded(child: Text('ZenjiGO settlement', style: TextStyle(fontWeight: FontWeight.w900))), if (blocked) const Pill('RESTRICTED')]),
+          const SizedBox(height: 8),
+          _kv('Gross since settlement', 'TZS ${_money(gross)}'),
+          _kv('Commission owed', 'TZS ${_money(owed)}'),
+          _kv('Commission rate', '${_money(_n(f, ['commissionRate', 'commission_rate']))}%'),
+          _kv('Autopay', autopay ? 'ON' : 'OFF'),
+          if (f['threshold'] != null) _kv('Settlement threshold', 'TZS ${_money(_n(f, ['threshold']))}'),
+          const SizedBox(height: 10),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            OutlinedButton(onPressed: loading ? null : () async {
+              try {
+                final r = await DriverApi.settle();
+                await _load();
+                if (context.mounted) toast(context, (r['message'] ?? 'Settlement request submitted. Follow provider status for confirmation.').toString());
+              } catch (e) { if (context.mounted) toast(context, e.toString().replaceFirst('Exception: ', '')); }
+            }, child: const Text('Settle now')),
+            FilledButton.tonal(onPressed: loading ? null : () async {
+              try {
+                await DriverApi.autopay(enabled: !autopay);
+                await _load();
+                if (context.mounted) toast(context, 'Autopay setting updated by server.');
+              } catch (e) { if (context.mounted) toast(context, e.toString().replaceFirst('Exception: ', '')); }
+            }, child: Text(autopay ? 'Disable autopay' : 'Enable autopay')),
+          ]),
+        ]))),
+        SectionTitle(s.t('Earnings by day', 'Mapato kwa siku')),
+        if (days.isEmpty && !loading) const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('No earnings recorded for this period.'))),
+        ...days.map((row) {
+          final d = Map<String, dynamic>.from(row as Map);
+          return Card(child: ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.payments_outlined)),
+            title: Text(_date(d['day']), style: const TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: Text('${d['rides'] ?? 0} completed rides · gross TZS ${_money(_n(d, ['gross']))}'),
+            trailing: Text('TZS ${_money(_n(d, ['driver_share', 'driverShare']))}', style: const TextStyle(fontWeight: FontWeight.w900)),
+          ));
+        }),
+        SectionTitle(s.t('Recent completed rides', 'Safari zilizokamilika hivi karibuni')),
+        if (rides.isEmpty && !loading) const Card(child: Padding(padding: EdgeInsets.all(16), child: Text('No rides returned by the server.'))),
+        ...rides.take(10).map((row) {
+          final r = Map<String, dynamic>.from(row as Map);
+          final status = (r['status'] ?? '—').toString();
+          final amount = _n(r, ['final_fare', 'finalFare', 'estimated_fare', 'estimatedFare']);
+          return Card(child: ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.route_outlined)),
+            title: Text((r['ride_code'] ?? r['rideCode'] ?? 'Ride ${r['id'] ?? ''}').toString(), style: const TextStyle(fontWeight: FontWeight.w800)),
+            subtitle: Text('${r['pickup_address'] ?? r['pickupAddress'] ?? '—'} → ${r['destination_address'] ?? r['destinationAddress'] ?? '—'}\n${_date(r['completed_at'] ?? r['completedAt'] ?? r['created_at'])} · $status'),
+            isThreeLine: true,
+            trailing: Text('TZS ${_money(amount)}', style: const TextStyle(fontWeight: FontWeight.w800)),
+          ));
+        }),
+        const SizedBox(height: 16),
+      ]),
+    ));
   }
 
-  Widget _summary(
-    BuildContext context,
-    String label,
-    String amount,
-    String rides,
-  ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .6),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'TZS $amount',
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
-            ),
-            Text(rides, style: const TextStyle(fontSize: 12)),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _kv(String label, String value) => Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Row(children: [
+    Expanded(child: Text(label)), Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+  ]));
 
-  Widget _share(
-    BuildContext context,
-    String label,
-    String percent,
-    String amount,
-    Color color,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: .1),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label),
-          Text(
-            percent,
-            style: TextStyle(
-              fontSize: 25,
-              fontWeight: FontWeight.w900,
-              color: color,
-            ),
-          ),
-          Text(
-            amount,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _incentive(
-    BuildContext context,
-    String title,
-    String subtitle,
-    String progress,
-    String reward,
-    double value,
-  ) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                ),
-                Pill(reward, color: ZenjiColors.darkHighlight),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(subtitle),
-            const SizedBox(height: 12),
-            LinearProgressIndicator(
-              value: value,
-              minHeight: 8,
-              borderRadius: BorderRadius.circular(99),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              progress,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _history(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: .72,
-        builder: (context, scrollController) => ListView(
-          controller: scrollController,
-          padding: const EdgeInsets.all(20),
-          children: [
-            Text(
-              'Wallet history',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w900,
-                  ),
-            ),
-            const SizedBox(height: 12),
-            ...[
-              'Ride #ZG1028 • +TZS 14,800',
-              'Ride #ZG1027 • +TZS 9,600',
-              'Weekend bonus • +TZS 25,000',
-              'Withdrawal • -TZS 100,000',
-            ].map(
-              (entry) => ListTile(
-                leading: CircleAvatar(
-                  child: Icon(
-                    entry.contains('Withdrawal')
-                        ? Icons.arrow_upward
-                        : Icons.arrow_downward,
-                  ),
-                ),
-                title: Text(
-                  entry,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                subtitle: const Text('18 Sep 2026 • Completed'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  void _showHistory(BuildContext context) {
+    showModalBottomSheet<void>(context: context, isScrollControlled: true, builder: (ctx) => DraggableScrollableSheet(
+      expand: false, initialChildSize: .72, builder: (ctx, controller) => ListView(controller: controller, padding: const EdgeInsets.all(18), children: [
+        Text('Settlement history', style: Theme.of(ctx).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w900)),
+        const SizedBox(height: 10),
+        if (settlements.isEmpty) const Text('No settlement records returned by the server.'),
+        ...settlements.map((item) {
+          final r = Map<String, dynamic>.from(item as Map);
+          return ListTile(
+            leading: const CircleAvatar(child: Icon(Icons.receipt_long_outlined)),
+            title: Text('Settlement ${r['id'] ?? ''} · TZS ${r['amount'] ?? r['commission_amount'] ?? '—'}'),
+            subtitle: Text('${r['status'] ?? '—'} · ${r['createdAt'] ?? r['created_at'] ?? ''}'),
+          );
+        }),
+      ]),
+    ));
   }
 }
 
 class WithdrawScreen extends StatefulWidget {
   const WithdrawScreen({super.key});
-
   @override
   State<WithdrawScreen> createState() => _WithdrawScreenState();
 }
 
 class _WithdrawScreenState extends State<WithdrawScreen> {
+  final key = GlobalKey<FormState>();
+  final amount = TextEditingController();
+  final account = TextEditingController();
+  final phone = TextEditingController();
   String method = 'M-Pesa';
-  final formKey = GlobalKey<FormState>();
+  bool submitting = false;
+
+  @override
+  void dispose() { amount.dispose(); account.dispose(); phone.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
-    final finance = AppScope.of(context).finance ?? const <String, dynamic>{};
-
+    final app = AppScope.of(context);
+    final f = app.finance ?? {};
+    final p = app.profile ?? {};
+    final available = (p['total_earnings'] ?? p['totalEarnings'] ?? p['available_balance'] ?? p['availableBalance'] ?? 0).toString();
     return Scaffold(
-      appBar: AppBar(title: const Text('Withdraw funds')),
-      body: ResponsivePage(
-        child: Form(
-          key: formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                AppScope.of(context).t('Choose payout method', 'Chagua njia ya malipo'),
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
-                    ),
-              ),
-              const SizedBox(height: 14),
-              DropdownButtonFormField<String>(
-                initialValue: method,
-                items: ['M-Pesa', 'YAS', AppScope.of(context).t('Bank transfer', 'Uhamisho wa benki')]
-                    .map(
-                      (item) => DropdownMenuItem(
-                        value: item,
-                        child: Text(item),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  if (value != null) setState(() => method = value);
-                },
-                decoration: InputDecoration(
-                  labelText: AppScope.of(context).t('Payout method', 'Njia ya malipo'),
-                  prefixIcon: Icon(Icons.payments_outlined),
-                ),
-              ),
-              const SizedBox(height: 14),
-              if (method != AppScope.of(context).t('Bank transfer', 'Uhamisho wa benki')) ...[
-                _field(
-                  AppScope.of(context).t('Phone number', 'Namba ya simu'),
-                  'e.g. +255 7XX XXX XXX',
-                  Icons.phone_outlined,
-                ),
-                const SizedBox(height: 14),
-                _field(
-                  AppScope.of(context).t('Account holder name', 'Jina la mmiliki wa akaunti'),
-                  AppScope.of(context).t('Name registered on mobile money', 'Jina lililosajiliwa kwenye pesa za simu'),
-                  Icons.person_outline,
-                ),
-              ] else ...[
-                _field(AppScope.of(context).t('Bank name', 'Jina la benki'), 'e.g. CRDB Bank', Icons.account_balance),
-                const SizedBox(height: 14),
-                _field(AppScope.of(context).t('Account number', 'Namba ya akaunti'), 'Bank account number', Icons.numbers),
-                const SizedBox(height: 14),
-                _field(
-                  AppScope.of(context).t('Account holder name', 'Jina la mmiliki wa akaunti'),
-                  AppScope.of(context).t('Full legal name', 'Jina kamili la kisheria'),
-                  Icons.person_outline,
-                ),
-                const SizedBox(height: 14),
-                _field(
-                  'Branch / SWIFT (optional)',
-                  'Optional routing information',
-                  Icons.route,
-                  required: false,
-                ),
-              ],
-              const SizedBox(height: 14),
-              _field(
-                AppScope.of(context).t('Amount (TZS)', 'Kiasi (TZS)'),
-                AppScope.of(context).t('Minimum TZS 10,000', 'Kiwango cha chini TZS 10,000'),
-                Icons.attach_money,
-              ),
-              const SizedBox(height: 18),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      KeyValueRow(
-                        AppScope.of(context).t('Available', 'Linapatikana'),
-                        'TZS ${finance['available_balance'] ?? finance['total_earnings'] ?? '0'}',
-                      ),
-                      KeyValueRow('Withdrawal fee', 'TZS 1,000'),
-                      KeyValueRow(AppScope.of(context).t('Processing', 'Inachakatwa'), 'Usually same day'),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              LoadingButton(
-                label: AppScope.of(context).t('Review withdrawal', 'Kagua uondoaji'),
-                icon: Icons.arrow_forward,
-                onPressed: () async {
-                  if (!(formKey.currentState?.validate() ?? false)) return;
-                  await fakeDelay();
-                  if (!context.mounted) return;
-                  final yes = await confirmDialog(
-                    context,
-                    title: AppScope.of(context).t('Confirm withdrawal', 'Thibitisha uondoaji'),
-                    message:
-                        'Send the requested amount using $method? Verify the payout details before confirming.',
-                    confirm: AppScope.of(context).t('Withdraw', 'Toa'),
-                  );
-                  if (yes == true && context.mounted) {
-                    try {
-                      final amount = double.tryParse((finance['available_balance'] ?? finance['total_earnings'] ?? 0).toString()) ?? 0;
-                      await DriverApi.requestPayout(
-                        amount: amount > 0 ? amount : 10000,
-                        method: method,
-                        accountDetails: {'method': method},
-                      );
-                      await AppScope.of(context).refreshFinance();
-                      if (context.mounted) {
-                        toast(context, 'Withdrawal request submitted successfully.');
-                        Navigator.pop(context);
-                      }
-                    } catch (e) {
-                      if (context.mounted) {
-                        toast(context, e.toString().replaceFirst('Exception: ', ''));
-                      }
-                    }
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
+      appBar: AppBar(title: const Text('Request payout')),
+      body: ResponsivePage(child: Form(key: key, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Card(child: ListTile(title: const Text('Server-reported balance'), subtitle: Text('TZS $available'))),
+        const SizedBox(height: 12),
+        TextFormField(controller: amount, keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Amount (TZS)'),
+          validator: (v) { final n = num.tryParse((v ?? '').trim()); if (n == null || n <= 0) return 'Enter a valid amount'; if (n > (num.tryParse(available) ?? 0)) return 'Amount exceeds the displayed balance'; return null; }),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(value: method, decoration: const InputDecoration(labelText: 'Payout method'),
+          items: const [DropdownMenuItem(value: 'M-Pesa', child: Text('M-Pesa / mobile money')), DropdownMenuItem(value: 'Bank', child: Text('Bank transfer'))],
+          onChanged: (v) => setState(() => method = v ?? method)),
+        const SizedBox(height: 12),
+        TextFormField(controller: phone, decoration: const InputDecoration(labelText: 'Mobile money phone (if applicable)')),
+        const SizedBox(height: 12),
+        TextFormField(controller: account, decoration: const InputDecoration(labelText: 'Account / bank details')),
+        const SizedBox(height: 18),
+        LoadingButton(label: submitting ? 'Submitting…' : 'Submit payout request', icon: Icons.send_outlined, onPressed: submitting ? null : () async {
+          if (!(key.currentState?.validate() ?? false)) return;
+          setState(() => submitting = true);
+          try {
+            final result = await DriverApi.requestPayout(
+              amount: double.parse(amount.text.trim()),
+              method: method,
+              accountDetails: {'phone': phone.text.trim(), 'account': account.text.trim()},
+            );
+            if (!context.mounted) return;
+            toast(context, 'Payout request ${result['id'] ?? ''} submitted. Status: ${result['status'] ?? 'pending'}.');
+            Navigator.pop(context);
+          } catch (e) {
+            if (context.mounted) toast(context, e.toString().replaceFirst('Exception: ', ''));
+          } finally { if (mounted) setState(() => submitting = false); }
+        }),
+      ]))),
     );
   }
-
-  Widget _field(
-    String label,
-    String hint,
-    IconData icon, {
-    bool required = true,
-  }) {
-    return TextFormField(
-      validator: (value) => required && (value == null || value.trim().isEmpty)
-          ? '$label is required'
-          : null,
-      keyboardType: label.contains('number') || label.contains('Amount')
-          ? TextInputType.number
-          : TextInputType.text,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        prefixIcon: Icon(icon),
-      ),
-    );
-  }
-}
-
-class EarningsChartPainter extends CustomPainter {
-  final Color color;
-  EarningsChartPainter(this.color);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final values = [.35, .52, .44, .72, .63, .9, .78];
-    final grid = Paint()
-      ..color = Colors.grey.withValues(alpha: .14)
-      ..strokeWidth = 1;
-
-    for (var i = 0; i < 4; i++) {
-      final y = size.height * i / 3;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
-    }
-
-    final width = size.width / values.length;
-    for (var i = 0; i < values.length; i++) {
-      final height = size.height * values[i];
-      final rect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(i * width + 8, size.height - height, width - 16, height),
-        const Radius.circular(8),
-      );
-      canvas.drawRRect(
-        rect,
-        Paint()..color = color.withValues(alpha: .85),
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

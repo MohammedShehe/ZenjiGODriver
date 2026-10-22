@@ -69,3 +69,14 @@ The driver app does not perform phone verification. Driver sign-in uses email OT
 During driver registration, a phone number may still be collected as a contact/profile
 field if required by the backend, but the app does not send an SMS OTP or require
 phone verification. Email verification remains enabled.
+
+## Live driver Earnings, Chat and Profile screens
+
+The Earnings screen reads `/driver/finance`, `/driver/earnings`, `/driver/rides`,
+and `/driver/settlements`, and submits payout requests through `/driver/payout`.
+The Chat screens use `/driver/chat`, `/driver/chat/support`, conversation messages,
+read receipts, and message sending endpoints. The Profile and Documents screens
+read `/driver/me` and `/driver/documents`. The app no longer seeds those screens
+with sample balances, messages, driver identity, vehicle data, document statuses,
+or fabricated rider reviews. Individual reviews are not currently exposed by the
+backend API and are therefore clearly identified as unavailable rather than faked.
