@@ -4,7 +4,8 @@ Flutter driver app aligned with the driver portal in `ZenjiGOWeb`.
 
 ## Driver flow
 
-- Sign in and restore the authenticated driver profile.
+- Sign in using the registered email address only. No phone number is requested or phone verification performed. The app sends `email` and `purpose: "login"` to `POST /auth/driver/send-otp`, then sends `email` and `code` to `POST /auth/driver/login`. Empty or malformed email values are blocked by form validation. The backend must support email-only driver login on these existing endpoints.
+- Restore the authenticated driver profile.
 - Go online/offline through `PATCH /driver/online`.
 - Receive real requests by polling `GET /driver/ride-requests`; accept using `POST /driver/rides/:id/accept`.
 - Ride status actions follow the portal sequence: `arriving` → `arrived` → `started` → `completed`, through `PATCH /driver/rides/:id/status`.
@@ -39,7 +40,7 @@ Google Cloud API keys may be restricted by platform. For a production app, creat
 
 | Purpose | Endpoint |
 |---|---|
-| Send driver OTP | `POST /auth/driver/send-otp` |
+| Send driver email OTP (email-only login) | `POST /auth/driver/send-otp` |
 | Login | `POST /auth/driver/login` |
 | Register driver + documents | `POST /driver/register` (multipart) |
 | Profile | `GET /driver/me` |
@@ -53,6 +54,10 @@ Google Cloud API keys may be restricted by platform. For a production app, creat
 | Settlement | `GET/POST /driver/settlements`, `GET /driver/settlements/:id` |
 | Payout | `POST /driver/payout` |
 | Chat | `GET /driver/chat`, `POST /driver/chat/:id/messages` |
+
+## Login contract note
+
+This build intentionally removes phone verification from driver sign-in. If the backend login controller currently requires `phone` in `/auth/driver/login`, update its validation and driver lookup to authenticate by email plus OTP; the mobile client will not submit a phone number. Registration may still request a phone number as driver profile data, but it is not used for login verification.
 
 ## Important verification note
 

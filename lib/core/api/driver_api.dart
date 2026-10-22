@@ -35,11 +35,10 @@ class DriverApi {
     return Map<String, dynamic>.from(d is Map ? d : {});
   }
 
-  static Future<Map<String, dynamic>> login(String phone, String code, {String? email}) async {
+  static Future<Map<String, dynamic>> login({required String email, required String code}) async {
     final d = await ApiClient.data('POST', '/auth/driver/login', body: {
-      'phone': phone,
+      'email': email,
       'code': code,
-      if (email != null) 'email': email,
     }, auth: false);
     return Map<String, dynamic>.from(d is Map ? d : {});
   }
