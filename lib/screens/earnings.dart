@@ -93,7 +93,7 @@ class EarningsScreen extends StatelessWidget {
                 Row(children:[
                   Expanded(child:OutlinedButton(onPressed:() async {try{await DriverApi.settle();await state.refreshFinance();if(context.mounted)toast(context,'Settlement created. Complete payment with your configured provider.');}catch(e){if(context.mounted)toast(context,e.toString().replaceFirst('Exception: ',''));}},child:const Text('Settle now'))),
                   const SizedBox(width:8),
-                  Expanded(child:FilledButton.tonal(onPressed:() async {try{await DriverApi.autopay(enabled:!autopay,provider:'example',providerToken:autopay?null:'EXAMPLE_PROVIDER_TOKEN_REPLACE_ME');await state.refreshFinance();if(context.mounted)toast(context,autopay?'Autopay disabled.':'Autopay enabled. Replace the example provider token with a real provider mandate.');}catch(e){if(context.mounted)toast(context,e.toString().replaceFirst('Exception: ',''));}},child:Text(autopay?'Disable autopay':'Enable autopay')))
+                  Expanded(child:FilledButton.tonal(onPressed:() async {try{await DriverApi.autopay(enabled:!autopay);await state.refreshFinance();if(context.mounted)toast(context,autopay?'Autopay disabled.':'Autopay request submitted; provider confirmation is required.');}catch(e){if(context.mounted)toast(context,e.toString().replaceFirst('Exception: ',''));}},child:Text(autopay?'Disable autopay':'Enable autopay')))
                 ])
               ]),
             ),
@@ -101,10 +101,10 @@ class EarningsScreen extends StatelessWidget {
           const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(child: _summary(context, AppScope.of(context).t('Today', 'Leo'), '48,500', '7 rides')),
+              Expanded(child: _summary(context, AppScope.of(context).t('Today', 'Leo'), '${f['today_earnings'] ?? f['todayEarnings'] ?? 0}', '${f['today_trips'] ?? f['todayTrips'] ?? 0} rides')),
               const SizedBox(width: 10),
               Expanded(
-                child: _summary(context, AppScope.of(context).t('This week', 'Wiki hii'), '268,000', '39 rides'),
+                child: _summary(context, AppScope.of(context).t('This week', 'Wiki hii'), '${f['week_earnings'] ?? f['weekEarnings'] ?? 0}', '${f['week_trips'] ?? f['weekTrips'] ?? 0} rides'),
               ),
             ],
           ),

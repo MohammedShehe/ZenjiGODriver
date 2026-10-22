@@ -1,5 +1,5 @@
 name: zenjigodriver
-description: "ZenjiGO Driver frontend application."
+description: "RIDE EASE frontend application."
 publish_to: 'none'
 version: 0.1.0
 
@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   google_fonts: ^6.3.3
   http: ^1.2.2
+  google_maps_flutter: ^2.12.3
+  geolocator: ^14.0.2
   shared_preferences: ^2.3.2
   file_picker: ^8.1.2
 

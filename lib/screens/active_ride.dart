@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:zenjigodriver/core/app_state.dart';
 import '../core/api/driver_api.dart';
 
-import '../core/mock_map.dart';
+import '../core/live_map.dart';
 import '../core/theme.dart';
 import '../core/widgets.dart';
 import 'chat.dart';
@@ -16,12 +16,57 @@ class ActiveRideScreen extends StatefulWidget {
 }
 
 class _ActiveRideScreenState extends State<ActiveRideScreen> {
-  int stage = 0; // 0 pickup, 1 arrived, 2 riding, 3 done
+  int stage = 0; // arriving, arrived, started, completed, done
+  Map<String, dynamic>? rideData;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRide();
+  }
+
+  Future<void> _loadRide() async {
+    final id = widget.rideId;
+    if (id == null) return;
+    try {
+      final rows = await DriverApi.history(limit: 100);
+      for (final item in rows) {
+        if (item is Map) {
+          final candidate = Map<String, dynamic>.from(item);
+          if ('${candidate['id'] ?? candidate['rideId'] ?? candidate['ride_id']}' == id) {
+            if (mounted) {
+              final status = '${candidate['status'] ?? ''}'.toLowerCase();
+              final restoredStage = switch (status) {
+                'arriving' => 1,
+                'arrived' => 2,
+                'started' => 3,
+                'completed' => 4,
+                _ => 0,
+              };
+              setState(() {
+                rideData = candidate;
+                stage = restoredStage;
+              });
+            }
+            break;
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  String _rideText(List<String> keys, {String fallback = '—'}) {
+    for (final key in keys) {
+      final value = rideData?[key];
+      if (value != null && value.toString().trim().isNotEmpty) return value.toString();
+    }
+    return fallback;
+  }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: stage == 3,
+      canPop: stage >= 4,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) {
           toast(context, AppScope.of(context).t('Finish or cancel the active ride before leaving.', 'Maliza au ghairi safari inayoendelea kabla ya kuondoka.'));
@@ -32,8 +77,8 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
           title: Text(stage < 2 ? AppScope.of(context).t('Pickup rider', 'Chukua abiria') : AppScope.of(context).t('Active ride', 'Safari inayoendelea')),
           actions: [
             Pill(
-              stage == 2 ? AppScope.of(context).t('IN PROGRESS', 'INAENDELEA') : 'TO PICKUP',
-              color: stage == 2 ? ZenjiColors.green : null,
+              stage >= 2 ? AppScope.of(context).t('IN PROGRESS', 'INAENDELEA') : 'TO PICKUP',
+              color: stage >= 2 ? ZenjiColors.green : null,
             ),
             const SizedBox(width: 14),
           ],
@@ -49,12 +94,12 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                   duration: const Duration(milliseconds: 500),
                   width: MediaQuery.sizeOf(context).width *
                       (stage == 0
-                          ? .25
+                          ? .20
                           : stage == 1
-                              ? .45
+                              ? .40
                               : stage == 2
-                                  ? .78
-                                  : 1),
+                                  ? .65
+                                  : stage == 3 ? .85 : 1),
                   decoration: const BoxDecoration(
                     color: ZenjiColors.green,
                     borderRadius: BorderRadius.horizontal(
@@ -67,7 +112,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                 child: ListView(
                   padding: const EdgeInsets.all(18),
                   children: [
-                    const MockMap(height: 300, active: true, showRequests: false),
+                    LiveDriverMap(height: 300, activeRideId: widget.rideId, showRequests: false, shareLocation: true),
                     const SizedBox(height: 14),
                     Card(
                       child: Padding(
@@ -81,26 +126,19 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                                   child: Icon(Icons.person, size: 30),
                                 ),
                                 const SizedBox(width: 12),
-                                const Expanded(
+                                Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        'Asha Salim',
-                                        style: TextStyle(
-                                          fontSize: 17,
-                                          fontWeight: FontWeight.w900,
-                                        ),
+                                        _rideText(['riderName', 'rider_name', 'customerName', 'customer_name'], fallback: 'Rider'),
+                                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      Row(
-                                        children: [
-                                          Icon(
-                                            Icons.star,
-                                            color: Colors.amber,
-                                            size: 17,
-                                          ),
-                                          Text(' 4.8 • 126 rides'),
-                                        ],
+                                      Text(
+                                        _rideText(['riderPhone', 'rider_phone', 'customerPhone', 'customer_phone'], fallback: 'Ride #${widget.rideId ?? '—'}'),
+                                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .6)),
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ],
                                   ),
@@ -108,7 +146,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                                 IconButton.filledTonal(
                                   onPressed: () => toast(
                                     context,
-                                    '${AppScope.of(context).t('Calling rider', 'Inampigia abiria')}: +255 777 123 456',
+                                    _rideText(['riderPhone', 'rider_phone', 'customerPhone', 'customer_phone'], fallback: 'Rider phone is not available for this ride.'),
                                   ),
                                   icon: const Icon(Icons.call),
                                 ),
@@ -117,8 +155,8 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                                   onPressed: () => Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => const ChatScreen(
-                                        name: 'Asha Salim',
+                                      builder: (_) => ChatScreen(
+                                        name: _rideText(['riderName', 'rider_name', 'customerName', 'customer_name'], fallback: 'Rider'),
                                         support: false,
                                       ),
                                     ),
@@ -128,10 +166,10 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                               ],
                             ),
                             const Divider(height: 26),
-                            KeyValueRow(AppScope.of(context).t('Pickup', 'Kuchukua'), 'Darajani Market'),
-                            KeyValueRow(AppScope.of(context).t('Drop-off', 'Kushusha'), 'Zanzibar Airport'),
-                            KeyValueRow(AppScope.of(context).t('Distance', 'Umbali'), '9.4 km'),
-                            KeyValueRow(AppScope.of(context).t('Est. fare', 'Nauli inayokadiriwa'), 'TZS 18,500'),
+                            KeyValueRow(AppScope.of(context).t('Pickup', 'Kuchukua'), _rideText(['pickupAddress', 'pickup_address'], fallback: 'Pickup location')),
+                            KeyValueRow(AppScope.of(context).t('Drop-off', 'Kushusha'), _rideText(['destinationAddress', 'destination_address'], fallback: 'Destination')),
+                            KeyValueRow(AppScope.of(context).t('Ride type', 'Aina ya safari'), _rideText(['rideType', 'ride_type'], fallback: 'Ride')),
+                            KeyValueRow(AppScope.of(context).t('Est. fare', 'Nauli inayokadiriwa'), 'TZS ${_rideText(['fare', 'estimatedFare', 'estimated_fare', 'amount'], fallback: '—')}'),
                           ],
                         ),
                       ),
@@ -158,6 +196,17 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                         ),
                       ],
                     ),
+                    const SizedBox(height: 10),
+                    if (stage < 4)
+                      SizedBox(
+                        width: double.infinity,
+                        child: TextButton.icon(
+                          onPressed: _cancelRide,
+                          icon: const Icon(Icons.cancel_outlined),
+                          label: Text(AppScope.of(context).t('Cancel ride', 'Ghairi safari')),
+                          style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+                        ),
+                      ),
                     const SizedBox(height: 18),
                   ],
                 ),
@@ -169,7 +218,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                   icon: _icon(),
                   onPressed: () async {
                     final messenger = ScaffoldMessenger.maybeOf(context);
-                    if (stage == 2) {
+                    if (stage == 3) {
                       final yes = await confirmDialog(
                         context,
                         title: AppScope.of(context).t('End this ride?', 'Maliza safari hii?'),
@@ -184,8 +233,14 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                       final nextStatus = ['arriving', 'arrived', 'started', 'completed'][stage];
                       await DriverApi.status(widget.rideId!, nextStatus);
                       if (!mounted) return;
-                      if (stage < 3) setState(() => stage++);
-                      if (stage == 3) _complete();
+                      setState(() {
+                        stage++;
+                        if (rideData != null) rideData = {...rideData!, 'status': nextStatus};
+                      });
+                      if (stage == 4) {
+                        AppScope.of(context).setActiveRideId(null);
+                        _complete();
+                      }
                     } catch (e) {
                       if (mounted && messenger != null) {
                         messenger.showSnackBar(
@@ -204,18 +259,44 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
   }
 
   String _label() => [
-        'I HAVE ARRIVED',
-        'START RIDE',
-        AppScope.of(context).t('END RIDE', 'MALIZA SAFARI'),
+        AppScope.of(context).t('ON MY WAY', 'NIKO NJIANI'),
+        AppScope.of(context).t('I HAVE ARRIVED', 'NIMEWASILI'),
+        AppScope.of(context).t('START RIDE', 'ANZA SAFARI'),
+        AppScope.of(context).t('COMPLETE RIDE', 'MALIZA SAFARI'),
         AppScope.of(context).t('RIDE COMPLETED', 'SAFARI IMEKAMILIKA'),
-      ][stage];
+      ][(stage > 4 ? 4 : stage)];
 
   IconData _icon() => [
+        Icons.navigation,
         Icons.location_on,
         Icons.play_arrow,
         Icons.stop,
         Icons.check_circle,
-      ][stage];
+      ][(stage > 4 ? 4 : stage)];
+
+  Future<void> _cancelRide() async {
+    final id = widget.rideId;
+    if (id == null) return;
+    final yes = await confirmDialog(
+      context,
+      title: AppScope.of(context).t('Cancel this ride?', 'Ghairi safari hii?'),
+      message: AppScope.of(context).t(
+        'Only cancel if you cannot safely complete the trip.',
+        'Ghairi tu ikiwa huwezi kukamilisha safari kwa usalama.',
+      ),
+      confirm: AppScope.of(context).t('Cancel ride', 'Ghairi safari'),
+    );
+    if (yes != true || !mounted) return;
+    try {
+      await DriverApi.status(id, 'cancelled');
+      if (!mounted) return;
+      AppScope.of(context).setActiveRideId(null);
+      toast(context, AppScope.of(context).t('Ride cancelled.', 'Safari imeghairiwa.'));
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) toast(context, e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
 
   Widget _fare() {
     return Card(
@@ -229,11 +310,11 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
             ),
             SizedBox(height: 8),
-            const KeyValueRow('Base fare', 'TZS 4,000'),
-            const KeyValueRow('Distance fare', 'TZS 12,500'),
-            const KeyValueRow('Time / extras', 'TZS 2,000'),
+            KeyValueRow('Ride ID', widget.rideId ?? '—'),
+            KeyValueRow('Ride type', _rideText(['rideType', 'ride_type'], fallback: '—')),
+            KeyValueRow('Status', _rideText(['status'], fallback: 'active')),
             const Divider(),
-            KeyValueRow(AppScope.of(context).t('Estimated total', 'Jumla inayokadiriwa'), 'TZS 18,500'),
+            KeyValueRow(AppScope.of(context).t('Estimated total', 'Jumla inayokadiriwa'), 'TZS ${_rideText(['fare', 'estimatedFare', 'estimated_fare', 'amount'], fallback: '—')}'),
           ],
         ),
       ),
@@ -276,12 +357,12 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
               ListTile(
                 leading: const Icon(Icons.call),
                 title: const Text('+255 676 891 227'),
-                onTap: () => toast(context, 'Phone dialer integration point'),
+                onTap: () => toast(context, 'Contact support at +255 676 891 227.'),
               ),
               ListTile(
                 leading: const Icon(Icons.email_outlined),
                 title: const Text('zenjigo@support.com'),
-                onTap: () => toast(context, 'Email integration point'),
+                onTap: () => toast(context, 'Contact support at support@zenjigo.online.'),
               ),
             ],
           ),
@@ -378,8 +459,8 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
               textAlign: TextAlign.center,
             ),
             SizedBox(height: 12),
-            KeyValueRow('Fare', 'TZS 18,500'),
-            KeyValueRow('Your share', 'TZS 14,800'),
+            KeyValueRow('Fare', 'TZS ${_rideText(['fare', 'estimatedFare', 'estimated_fare', 'amount'], fallback: '—')}'),
+            KeyValueRow('Your share', 'TZS ${_rideText(['driverEarnings', 'driver_earnings', 'driverShare', 'driver_share'], fallback: '—')}'),
           ],
         ),
         actions: [

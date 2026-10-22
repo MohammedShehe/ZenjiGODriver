@@ -5,14 +5,14 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiClient {
-  /// Override at build time:
+  /// Default targets the host from an Android emulator. Override at build time:
   ///   flutter run --dart-define=ZENJIGO_API_URL=http://10.0.2.2:5000/api/v1
   /// Android emulator → host machine: 10.0.2.2
   /// iOS simulator → host: 127.0.0.1
   /// Physical device → your PC LAN IP (same Wi‑Fi), e.g. http://192.168.x.x:5000/api/v1
   static const baseUrl = String.fromEnvironment(
     'ZENJIGO_API_URL',
-    defaultValue: 'http://192.168.0.113:5000/api/v1',
+    defaultValue: 'http://192.168.0.109:5000/api/v1',
   );
 
   static const Duration requestTimeout = Duration(seconds: 15);

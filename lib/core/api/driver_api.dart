@@ -4,9 +4,10 @@ import 'api_client.dart';
 
 class DriverApi {
   /* -------------------- Auth -------------------- */
-  static Future<Map<String, dynamic>> sendOtp(String phone, {String purpose = 'login'}) async {
+  static Future<Map<String, dynamic>> sendOtp({String? phone, required String email, String purpose = 'login'}) async {
     final d = await ApiClient.data('POST', '/auth/driver/send-otp', body: {
-      'phone': phone,
+      if (phone != null) 'phone': phone,
+      'email': email,
       'purpose': purpose,
     }, auth: false);
     return Map<String, dynamic>.from(d is Map ? d : {});
@@ -34,10 +35,11 @@ class DriverApi {
     return Map<String, dynamic>.from(d is Map ? d : {});
   }
 
-  static Future<Map<String, dynamic>> login(String phone, String code) async {
+  static Future<Map<String, dynamic>> login(String phone, String code, {String? email}) async {
     final d = await ApiClient.data('POST', '/auth/driver/login', body: {
       'phone': phone,
       'code': code,
+      if (email != null) 'email': email,
     }, auth: false);
     return Map<String, dynamic>.from(d is Map ? d : {});
   }
@@ -55,7 +57,6 @@ class DriverApi {
     required String vehicleModel,
     required String vehicleColor,
     required int? modelYear,
-    required String phoneOtpCode,
     required String emailOtpCode,
     required Map<String, List<String>> files,
   }) async {
@@ -73,7 +74,6 @@ class DriverApi {
       'vehicleModel': vehicleModel,
       'vehicleColor': vehicleColor,
       'modelYear': modelYear?.toString() ?? '',
-      'phoneOtpCode': phoneOtpCode,
       'emailOtpCode': emailOtpCode,
     });
     for (final entry in files.entries) {
@@ -132,7 +132,12 @@ class DriverApi {
 
   static Future<List<dynamic>> history({int limit = 50}) async {
     final d = await ApiClient.data('GET', '/driver/rides?limit=$limit');
-    return List<dynamic>.from(d is List ? d : []);
+    if (d is List) return List<dynamic>.from(d);
+    if (d is Map) {
+      final rows = d['rides'] ?? d['data'] ?? d['items'] ?? [];
+      return List<dynamic>.from(rows is List ? rows : []);
+    }
+    return <dynamic>[];
   }
 
   /* -------------------- Finance -------------------- */
@@ -150,8 +155,23 @@ class DriverApi {
     return Map<String, dynamic>.from(d is Map ? d : {});
   }
 
-  static Future<Map<String, dynamic>> settle({String provider = 'example'}) async {
-    final d = await ApiClient.data('POST', '/driver/settlements', body: {'provider': provider});
+  static Future<Map<String, dynamic>> settle({Map<String, dynamic> options = const {}}) async {
+    final d = await ApiClient.data('POST', '/driver/settlements', body: options);
+    return Map<String, dynamic>.from(d is Map ? d : {});
+  }
+
+  static Future<List<dynamic>> settlements() async {
+    final d = await ApiClient.data('GET', '/driver/settlements');
+    if (d is List) return List<dynamic>.from(d);
+    if (d is Map) {
+      final rows = d['settlements'] ?? d['data'] ?? d['items'] ?? [];
+      return List<dynamic>.from(rows is List ? rows : []);
+    }
+    return <dynamic>[];
+  }
+
+  static Future<Map<String, dynamic>> settlementStatus(String id) async {
+    final d = await ApiClient.data('GET', '/driver/settlements/$id');
     return Map<String, dynamic>.from(d is Map ? d : {});
   }
 
@@ -216,6 +236,10 @@ class DriverApi {
   static Future<List<dynamic>> messages(String conversationId) async {
     final d = await ApiClient.data('GET', '/driver/chat/$conversationId/messages');
     return List<dynamic>.from(d is List ? d : []);
+  }
+
+  static Future<void> markRead(String conversationId) async {
+    await ApiClient.data('POST', '/driver/chat/$conversationId/read');
   }
 
   static Future<Map<String, dynamic>> sendMessage(String conversationId, String text) async {

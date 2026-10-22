@@ -16,7 +16,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen>{
  Future<void> send() async{
   if(phone.text.trim().length<7){toast(context,'Enter a valid phone number.');return;}
   setState(()=>loading=true);
-  try{await DriverApi.sendOtp('+255${phone.text.trim()}');if(mounted){setState(()=>sent=true);start();toast(context,'OTP sent.');}}catch(e){if(mounted)toast(context,e.toString().replaceFirst('Exception: ',''));}finally{if(mounted)setState(()=>loading=false);}
+    try{await DriverApi.sendOtp(phone:'+255${phone.text.trim()}',email:'');if(mounted){setState(()=>sent=true);start();toast(context,'OTP sent.');}}catch(e){if(mounted)toast(context,e.toString().replaceFirst('Exception: ',''));}finally{if(mounted)setState(()=>loading=false);}
  }
  void start(){timer?.cancel();seconds=60;timer=Timer.periodic(const Duration(seconds:1),(t){if(!mounted||seconds<=1){t.cancel();if(mounted)setState(()=>seconds=0);return;}setState(()=>seconds--);});}
  Future<void> verify() async{

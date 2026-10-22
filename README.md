@@ -1,67 +1,59 @@
-# ZenjiGO Driver
+# ZenjiGO Driver — Flutter
 
-Flutter Driver app for **ZenjiGO** — fully wired to the ZenjiGO backend API.
+Flutter driver app aligned with the driver portal in `ZenjiGOWeb`.
 
-## Integrated flows (live API)
+## Driver flow
 
-| Flow | Endpoint(s) |
-|------|-------------|
-| Send OTP | `POST /auth/driver/send-otp` |
+- Sign in and restore the authenticated driver profile.
+- Go online/offline through `PATCH /driver/online`.
+- Receive real requests by polling `GET /driver/ride-requests`; accept using `POST /driver/rides/:id/accept`.
+- Ride status actions follow the portal sequence: `arriving` → `arrived` → `started` → `completed`, through `PATCH /driver/rides/:id/status`.
+- During online availability and active rides, device GPS is read with the platform location APIs and sent to `POST /driver/location`.
+- The map uses the native Google Maps SDK and displays the driver's current position plus pickup/drop-off/request markers only when real coordinates are returned by the backend.
+- Finance, settlements, payout, profile, history and chat use the same `/api/v1` driver routes as the web portal.
+
+## API base URL
+
+Set the backend URL at build/run time. It must be reachable from the device:
+
+```bash
+flutter pub get
+# Android emulator talking to backend on the host machine:
+flutter run --dart-define=ZENJIGO_API_URL=http://10.0.2.2:5000/api/v1
+# Physical Android device: use your computer's LAN IP, e.g. 192.168.x.x
+# iOS simulator: typically http://127.0.0.1:5000/api/v1
+```
+
+For production, use the deployed HTTPS API base, e.g. `--dart-define=ZENJIGO_API_URL=https://YOUR-BACKEND-HOST/api/v1`.
+The backend must allow the app's network origin where relevant and the URL must be reachable from the device. The code uses the same route paths as `ZenjiGOWeb/js/api.js`.
+
+## Google Maps and GPS
+
+The web portal's Google Maps browser key is currently wired as the native map key in:
+- `android/app/src/main/AndroidManifest.xml`
+- `ios/Runner/AppDelegate.swift`
+
+Google Cloud API keys may be restricted by platform. For a production app, create/authorize a native key with **Maps SDK for Android** and **Maps SDK for iOS** enabled, apply Android package/SHA restrictions and iOS bundle restrictions, and replace the key in those two files. Do not use an HTTP-referrer-only browser key for native apps. Enable location permission prompts in Android/iOS settings if the device has denied access. GPS sharing is best-effort while the device has a valid location fix and network connection.
+
+## Endpoints used
+
+| Purpose | Endpoint |
+|---|---|
+| Send driver OTP | `POST /auth/driver/send-otp` |
 | Login | `POST /auth/driver/login` |
-| Multi-step registration + document upload | `POST /driver/register` (multipart) |
-| Profile restore on launch | `GET /driver/me` |
-| Go online / offline | `PATCH /driver/online` |
+| Register driver + documents | `POST /driver/register` (multipart) |
+| Profile | `GET /driver/me` |
+| Online/offline | `PATCH /driver/online` |
+| Current location | `POST /driver/location` |
 | Ride requests | `GET /driver/ride-requests` |
 | Accept ride | `POST /driver/rides/:id/accept` |
-| Ride status (arriving → arrived → started → completed) | `PATCH /driver/rides/:id/status` |
-| Finance / settlement status | `GET /driver/finance` |
-| Create settlement | `POST /driver/settlements` |
-| Autopay toggle | `POST /driver/autopay` |
-| Withdrawal / payout request | `POST /driver/payout` |
-| Chat conversations | `GET /driver/chat` |
-| Sign out | clears tokens + `POST /auth/logout` |
-| Token refresh | automatic on 401 via `POST /auth/refresh` |
+| Ride status | `PATCH /driver/rides/:id/status` |
+| Ride history | `GET /driver/rides?limit=50` |
+| Finance / earnings | `GET /driver/finance`, `GET /driver/earnings` |
+| Settlement | `GET/POST /driver/settlements`, `GET /driver/settlements/:id` |
+| Payout | `POST /driver/payout` |
+| Chat | `GET /driver/chat`, `POST /driver/chat/:id/messages` |
 
-## Still UI-assisted (no hardware dependency in this package)
+## Important verification note
 
-- Map rendering uses an in-app mock map widget (swap for Google Maps / Mapbox when you add the SDK key)
-- GPS coordinates are not streamed continuously (call `DriverApi.updateLocation` from a geolocator timer when you add the package)
-- In-conversation chat messages remain local until you connect Socket.IO or poll `DriverApi.messages`
-- FCM push requires Firebase project wiring (`DriverApi.registerFcmToken`)
-
-## Configure API base URL
-
-Default: `http://localhost:5000/api/v1`
-
-Override at build time:
-
-```bash
-flutter run --dart-define=ZENJIGO_API_URL=http://10.0.2.2:5000/api/v1
-```
-
-- Android emulator → `http://10.0.2.2:5000/api/v1`
-- iOS simulator → `http://localhost:5000/api/v1`
-- Physical device → your machine LAN IP
-
-## Run
-
-```bash
-# Backend must be running first
-cd ../ZenjiGOAdmin/backend   # or your backend path
-npm install && npm run migrate && npm run seed && npm run dev
-
-# Driver app
-cd zenjigodriver
-flutter pub get
-flutter run --dart-define=ZENJIGO_API_URL=http://10.0.2.2:5000/api/v1
-```
-
-## Auth flow
-
-1. Register (or use an admin-approved driver account)
-2. Sign in with phone → OTP (Twilio Verify when configured)
-3. JWT access + refresh tokens stored in SharedPreferences
-
-## Theme
-
-Dark mode is the default. English / Kiswahili toggle is available in Settings.
+This ZIP contains source code, not a signed release build. It was updated in this environment but could not be compiled or exercised against your deployed backend because Flutter tooling and live backend credentials were unavailable here. Before release, run `flutter pub get`, `flutter analyze`, and test each ride status transition with your staging backend. Payment-provider settlement, push notifications, and rider reporting still depend on the backend/provider being configured.

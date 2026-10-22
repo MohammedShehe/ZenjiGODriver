@@ -1,8 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../core/app_state.dart';
 import '../core/api/driver_api.dart';
-import '../core/mock_map.dart';
+import '../core/live_map.dart';
 import '../core/theme.dart';
 import '../core/widgets.dart';
 import 'active_ride.dart';
@@ -15,7 +16,25 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  bool requestShown = false;
+  String? _lastPromptedRequestId;
+  bool _prompting = false;
+  Timer? _requestTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _requestTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (!mounted) return;
+      final state = AppScope.of(context);
+      if (state.online && !_prompting) _showRideRequest();
+    });
+  }
+
+  @override
+  void dispose() {
+    _requestTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -88,12 +107,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 final messenger = ScaffoldMessenger.maybeOf(context);
                                 try {
                                   await state.setOnlineRemote(value);
-                                  if (value && !requestShown) {
-                                    setState(() => requestShown = true);
-                                    Future.delayed(const Duration(milliseconds: 450), () {
-                                      if (mounted) _showRideRequest();
-                                    });
-                                  }
+                                  if (value) _showRideRequest();
                                 } catch (e) {
                                   if (mounted && messenger != null) {
                                     messenger.showSnackBar(
@@ -114,18 +128,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: ListView(
                   padding: EdgeInsets.fromLTRB(isNarrow ? 12 : 18, 0, isNarrow ? 12 : 18, 20),
                   children: [
-                    MockMap(
+                    LiveDriverMap(
                       height: MediaQuery.sizeOf(context).height < 700 ? 260 : 390,
                       showRequests: state.online,
+                      shareLocation: state.online,
                     ),
                     const SizedBox(height: 16),
                     Row(
                       children: [
-                        Expanded(child: _stat(Icons.payments_outlined, state.t('Today', 'Leo'), 'TZS 48,500')),
+                        Expanded(child: _stat(Icons.payments_outlined, state.t('Today', 'Leo'), 'TZS ${state.finance?['todayEarnings'] ?? state.finance?['today_earnings'] ?? 0}')),
                         const SizedBox(width: 8),
-                        Expanded(child: _stat(Icons.route_outlined, state.t('Trips', 'Safari'), '7')),
+                        Expanded(child: _stat(Icons.route_outlined, state.t('Trips', 'Safari'), '${state.finance?['todayTrips'] ?? state.finance?['today_trips'] ?? 0}')),
                         const SizedBox(width: 8),
-                        Expanded(child: _stat(Icons.star_rounded, state.t('Rating', 'Ukadiriaji'), '4.9')),
+                        Expanded(child: _stat(Icons.star_rounded, state.t('Rating', 'Ukadiriaji'), '${state.profile?['rating'] ?? '—'}')),
                       ],
                     ),
                     const SizedBox(height: 18),
@@ -213,6 +228,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _showRideRequest() async {
+    if (_prompting || !mounted || !AppScope.of(context).online) return;
+    _prompting = true;
     final state = AppScope.of(context);
     Map<String,dynamic> request={};
     try {
@@ -221,16 +238,25 @@ class _HomeScreenState extends State<HomeScreen> {
         if(mounted) _showSettlementRequired(result);
         return;
       }
-      final list=List<dynamic>.from(result['requests']??result);
+      final raw = result['requests'] ?? result['data'] ?? [];
+      final list = raw is List ? raw : <dynamic>[];
       if(list.isEmpty) return;
-      request=Map<String,dynamic>.from(list.first);
+      final next = list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).firstWhere(
+        (r) => '${r['id'] ?? ''}' != (_lastPromptedRequestId ?? ''),
+        orElse: () => <String, dynamic>{},
+      );
+      if (next.isEmpty) return;
+      request = next;
+      _lastPromptedRequestId = '${request['id'] ?? ''}';
     } catch(e) { if(mounted) toast(context,e.toString().replaceFirst('Exception: ','')); return; }
+    finally { _prompting = false; }
     if(!mounted) return;
-    final pickup=request['pickup_address']??'Nearby pickup';
-    final drop=request['destination_address']??'Destination';
-    final fare=(request['estimated_fare']??0).toString();
+    final pickup=request['pickupAddress'] ?? request['pickup_address'] ?? 'Nearby pickup';
+    final drop=request['destinationAddress'] ?? request['destination_address'] ?? 'Destination';
+    final fare=(request['fare'] ?? request['estimatedFare'] ?? request['estimated_fare'] ?? 0).toString();
 
-    showModalBottomSheet<void>(
+    _prompting = true;
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       isDismissible: false,
@@ -269,7 +295,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       const Spacer(),
                       Text(
-                        '12 sec',
+                        'Ride #${request['id'] ?? '—'}',
                         style: TextStyle(
                           fontWeight: FontWeight.w900,
                           color: Theme.of(sheetContext).colorScheme.primary,
@@ -295,8 +321,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   Row(
                     children: [
                       Expanded(child: _info(state.t('Estimated fare', 'Nauli inayokadiriwa'), 'TZS $fare')),
-                      Expanded(child: _info(state.t('ETA', 'Muda'), '16 min')),
-                      Expanded(child: _info(state.t('Rider', 'Abiria'), '★ 4.8')),
+                      Expanded(child: _info(state.t('Ride type', 'Aina ya safari'), '${request['rideType'] ?? request['ride_type'] ?? '—'}')),
+                      Expanded(child: _info(state.t('Status', 'Hali'), '${request['status'] ?? 'Requested'}')),
                     ],
                   ),
                   const SizedBox(height: 18),
@@ -304,14 +330,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       Expanded(
                         child: LoadingButton(
-                          label: state.t('Reject', 'Kataa'),
+                          label: state.t('Dismiss', 'Funga'),
                           outline: true,
                           onPressed: () async {
-                            await fakeDelay(300);
                             if (sheetContext.mounted) Navigator.pop(sheetContext);
-                            if (mounted) {
-                              toast(context, state.t('Ride request rejected', 'Ombi la safari limekataliwa'));
-                            }
                           },
                         ),
                       ),
@@ -343,6 +365,7 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       },
     );
+    _prompting = false;
   }
 
   void _showSettlementRequired(Map<String, dynamic> data) {
