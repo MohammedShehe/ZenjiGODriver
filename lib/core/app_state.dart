@@ -13,6 +13,7 @@ class AppState extends ChangeNotifier {
   Map<String, dynamic>? profile;
   Map<String, dynamic>? finance;
   String? activeRideId;
+  int unreadMessages = 0;
 
   AppState() {
     _restore();
@@ -29,6 +30,7 @@ class AppState extends ChangeNotifier {
       try {
         await refreshProfile();
         await refreshFinance();
+        await refreshUnreadMessages();
       } catch (_) {
         authenticated = false;
         await ApiClient.clear();
@@ -47,9 +49,10 @@ class AppState extends ChangeNotifier {
         .toString();
     online = (profile?['online'] ?? false) == true;
     notifyListeners();
-    // Load full profile + finance in background
+    // Load full profile + finance + unread chats in background
     refreshProfile();
     refreshFinance();
+    refreshUnreadMessages();
   }
 
   Future<void> logout() async {
@@ -66,6 +69,7 @@ class AppState extends ChangeNotifier {
     finance = null;
     online = false;
     activeRideId = null;
+    unreadMessages = 0;
     applicationStatus = 'Pending';
     notifyListeners();
   }
@@ -95,6 +99,29 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+
+  /// Total unread chat messages across conversations (for nav badge).
+  Future<void> refreshUnreadMessages() async {
+    if (!authenticated) {
+      unreadMessages = 0;
+      notifyListeners();
+      return;
+    }
+    try {
+      final list = await DriverApi.conversations();
+      int total = 0;
+      for (final item in list) {
+        if (item is! Map) continue;
+        final m = Map<String, dynamic>.from(item);
+        total += int.tryParse((m['unreadCount'] ?? m['unread_count'] ?? 0).toString()) ?? 0;
+      }
+      unreadMessages = total < 0 ? 0 : total;
+    } catch (_) {
+      // Keep last known count on network errors
+    }
+    notifyListeners();
+  }
+
   void setTheme(ThemeMode mode) {
     themeMode = mode;
     SharedPreferences.getInstance().then((p) => p.setString(
@@ -120,6 +147,10 @@ class AppState extends ChangeNotifier {
   void setNav(int index) {
     navIndex = index;
     notifyListeners();
+    // Refresh badge when user opens Chat tab (index 2)
+    if (index == 2) {
+      refreshUnreadMessages();
+    }
   }
 
   void setApplicationStatus(String status) {

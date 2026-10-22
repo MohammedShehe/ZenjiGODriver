@@ -5,8 +5,33 @@ import 'earnings.dart';
 import 'home.dart';
 import 'profile.dart';
 
-class MainShell extends StatelessWidget {
+class MainShell extends StatefulWidget {
   const MainShell({super.key});
+  @override
+  State<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends State<MainShell> {
+  @override
+  void initState() {
+    super.initState();
+    // Refresh unread count when shell mounts and periodically while visible.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AppScope.of(context).refreshUnreadMessages();
+    });
+  }
+
+  Widget _chatIcon({required bool selected, required int unread}) {
+    final icon = Icon(selected ? Icons.chat_bubble : Icons.chat_bubble_outline);
+    if (unread <= 0) return icon;
+    final label = unread > 99 ? '99+' : '$unread';
+    return Badge(
+      label: Text(label),
+      isLabelVisible: true,
+      child: icon,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
@@ -16,6 +41,7 @@ class MainShell extends StatelessWidget {
       ChatListScreen(),
       ProfileScreen(),
     ];
+    final unread = state.unreadMessages;
     return PopScope(
       canPop: state.navIndex == 0,
       onPopInvokedWithResult: (didPop, _) {
@@ -38,8 +64,8 @@ class MainShell extends StatelessWidget {
               label: state.t('Earnings', 'Mapato'),
             ),
             NavigationDestination(
-              icon: const Badge(label: Text('3'), child: Icon(Icons.chat_bubble_outline)),
-              selectedIcon: const Badge(label: Text('3'), child: Icon(Icons.chat_bubble)),
+              icon: _chatIcon(selected: false, unread: unread),
+              selectedIcon: _chatIcon(selected: true, unread: unread),
               label: state.t('Chat', 'Mazungumzo'),
             ),
             NavigationDestination(

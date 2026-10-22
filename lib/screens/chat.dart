@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/api/driver_api.dart';
+import '../core/app_state.dart';
 import '../core/theme.dart';
 import '../core/widgets.dart';
 
@@ -30,6 +31,16 @@ class _ChatListScreenState extends State<ChatListScreen> {
         chats = list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
         loading = false;
       });
+      // Keep bottom-nav badge in sync with list unread counts
+      if (mounted) {
+        int total = 0;
+        for (final c in chats) {
+          total += int.tryParse((c['unreadCount'] ?? c['unread_count'] ?? 0).toString()) ?? 0;
+        }
+        final app = AppScope.of(context);
+        app.unreadMessages = total < 0 ? 0 : total;
+        app.notifyListeners();
+      }
     } catch (e) {
       if (mounted) setState(() { error = e.toString().replaceFirst('Exception: ', ''); loading = false; });
     }
@@ -155,6 +166,8 @@ class _ChatScreenState extends State<ChatScreen> {
         loading = false;
         error = null;
       });
+      // Conversation opened → server marked read → refresh nav badge
+      AppScope.of(context).refreshUnreadMessages();
       if (!silent && scroll.hasClients) scroll.jumpTo(scroll.position.maxScrollExtent);
     } catch (e) {
       if (mounted) setState(() { if (!silent) error = e.toString().replaceFirst('Exception: ', ''); loading = false; });
