@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/app_state.dart';
 import '../core/api/driver_api.dart';
 import '../core/widgets.dart';
+import '../core/push_service.dart';
 import 'main_shell.dart';
 import 'registration.dart';
 
@@ -94,6 +95,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
       );
       if (!mounted) return;
       await AppScope.of(context).login(data);
+      await PushService.instance.registerTokenNow();
       if (mounted) {
         Navigator.pushReplacement(
           context,
