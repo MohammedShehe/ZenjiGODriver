@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/api/driver_api.dart';
 import '../core/app_state.dart';
+import '../core/friendly_errors.dart';
 import '../core/theme.dart';
 import '../core/widgets.dart';
 
@@ -59,7 +60,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
       });
       AppScope.of(context).refreshFinance();
     } catch (e) {
-      if (mounted) setState(() { error = e.toString().replaceFirst('Exception: ', ''); loading = false; });
+      if (mounted) setState(() { error = FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili); loading = false; });
     }
   }
 
@@ -117,7 +118,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                 final r = await DriverApi.settle();
                 await _load();
                 if (context.mounted) toast(context, (r['message'] ?? 'Settlement request submitted. Follow provider status for confirmation.').toString());
-              } catch (e) { if (context.mounted) toast(context, e.toString().replaceFirst('Exception: ', '')); }
+              } catch (e) { if (context.mounted) toast(context, FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili)); }
             }, child: const Text('Settle now')),
             FilledButton.tonal(onPressed: loading ? null : () async {
               try {
@@ -157,7 +158,7 @@ class _EarningsScreenState extends State<EarningsScreen> {
                 await DriverApi.autopay(enabled: true, provider: 'momo', providerToken: token);
                 await _load();
                 if (context.mounted) toast(context, 'Autopay enabled for $phone');
-              } catch (e) { if (context.mounted) toast(context, e.toString().replaceFirst('Exception: ', '')); }
+              } catch (e) { if (context.mounted) toast(context, FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili)); }
             }, child: Text(autopay ? 'Disable autopay' : 'Enable autopay')),
           ]),
         ]))),
@@ -267,7 +268,7 @@ class _WithdrawScreenState extends State<WithdrawScreen> {
             toast(context, 'Payout request ${result['id'] ?? ''} submitted. Status: ${result['status'] ?? 'pending'}.');
             Navigator.pop(context);
           } catch (e) {
-            if (context.mounted) toast(context, e.toString().replaceFirst('Exception: ', ''));
+            if (context.mounted) toast(context, FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili));
           } finally { if (mounted) setState(() => submitting = false); }
         }),
       ]))),

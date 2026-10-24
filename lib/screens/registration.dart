@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../core/api/driver_api.dart';
 import '../core/app_state.dart';
+import '../core/friendly_errors.dart';
 import '../core/widgets.dart';
 import 'main_shell.dart';
 import 'login.dart';
@@ -387,7 +388,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       });
       toast(context, AppScope.of(context).t('Email verified.', 'Barua pepe imethibitishwa.'));
     } catch (e) {
-      if (mounted) toast(context, e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) toast(context, FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili));
     } finally {
       if (mounted) setState(() => emailVerifying = false);
     }
@@ -427,7 +428,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       if(!mounted)return;
       Navigator.pushReplacement(context,MaterialPageRoute(builder:(_)=>ApplicationTrackingScreen(driverId: id?.toString(), email: emailController.text.trim())));
     }catch(e){
-      final msg = e.toString().replaceFirst('Exception: ','');
+      final msg = FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili);
       // If backend already created the driver (timeout after success), still go to tracking
       if (msg.toLowerCase().contains('already') || msg.toLowerCase().contains('exist')) {
         if(mounted) toast(context, msg);
@@ -814,7 +815,7 @@ class _ApplicationTrackingScreenState extends State<ApplicationTrackingScreen> {
       }
     } catch (e) {
       if (mounted && messenger != null) {
-        messenger.showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+        messenger.showSnackBar(SnackBar(content: Text(FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili))));
       }
       // Still try to enter if we at least have a token
       final token = await ApiClient.accessToken;

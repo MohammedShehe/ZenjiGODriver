@@ -5,9 +5,15 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
     <string>Your location is used to show your position on the map and share it with the rider during an active ride.</string>
     <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>Your location is shared with the rider while you are online or completing an active ride.</string>
+    <string>Your location is shared with the rider while you are online or completing an active ride, including when the app is in the background.</string>
+    <key>UIBackgroundModes</key>
+    <array>
+      <string>location</string>
+      <string>fetch</string>
+      <string>remote-notification</string>
+    </array>
     <key>CFBundleDisplayName</key>
-    <string>RIDE EASE</string>
+    <string>ZenjiGO Driver</string>
     <key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 		<key>CFBundleExecutable</key>
@@ -17,7 +23,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>RIDE EASE</string>
+	<string>ZenjiGO Driver</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

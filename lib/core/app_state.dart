@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zenjigodriver/core/api/api_client.dart';
 import 'package:zenjigodriver/core/api/driver_api.dart';
+import 'package:zenjigodriver/core/background_location.dart';
 
 class AppState extends ChangeNotifier {
   ThemeMode themeMode = ThemeMode.dark;
@@ -76,6 +77,7 @@ class AppState extends ChangeNotifier {
     activeRideId = null;
     unreadMessages = 0;
     applicationStatus = 'Pending';
+    BackgroundLocationService.instance.stop();
     notifyListeners();
   }
 
@@ -192,11 +194,19 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     if (value) {
       startRidePolling();
-      // fire-and-forget remote sync
       DriverApi.setOnline(true).catchError((_) {});
+      // Keep GPS alive even when the app is closed/backgrounded while online.
+      BackgroundLocationService.instance.start(
+        isSwahili: isSwahili,
+        activeRideId: activeRideId,
+      );
     } else {
       stopRidePolling();
       DriverApi.setOnline(false).catchError((_) {});
+      // Stop background tracking only if there is no active ride.
+      if (activeRideId == null) {
+        BackgroundLocationService.instance.stop();
+      }
     }
   }
 
@@ -217,6 +227,14 @@ class AppState extends ChangeNotifier {
   void setActiveRideId(String? id) {
     activeRideId = id;
     notifyListeners();
+    if (id != null || online) {
+      BackgroundLocationService.instance.restart(
+        isSwahili: isSwahili,
+        activeRideId: id,
+      );
+    } else {
+      BackgroundLocationService.instance.stop();
+    }
   }
 
   String get displayName {

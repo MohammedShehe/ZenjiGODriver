@@ -1,3 +1,4 @@
+import 'package:zenjigodriver/core/friendly_errors.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -30,21 +31,17 @@ class ApiClient {
   }
 
   static Exception _mapNetworkError(Object e) {
-    final hint =
-        'Cannot reach server at $baseUrl. '
-        'Make sure the backend is running and the device can reach that host. '
-        'Android emulator: use http://10.0.2.2:5000/api/v1  |  '
-        'Physical phone: use your PC LAN IP on the same Wi‑Fi.';
-    if (e is TimeoutException) {
-      return Exception('Connection timed out. $hint');
+    // Always surface a short, driver-friendly message (no host URLs / stack traces).
+    return Exception(FriendlyErrors.message(e));
+  }
+
+  /// Prefer API `message` field; otherwise a friendly status-based text.
+  static Exception _mapHttpError(int status, Map<String, dynamic>? json, String body) {
+    final msg = (json?['message'] ?? json?['error'] ?? '').toString().trim();
+    if (msg.isNotEmpty && msg.length < 200) {
+      return Exception(msg);
     }
-    if (e is SocketException) {
-      return Exception('Network error (${e.message}). $hint');
-    }
-    if (e is http.ClientException) {
-      return Exception('Network error (${e.message}). $hint');
-    }
-    return Exception(e.toString());
+    return Exception(FriendlyErrors.message('HTTP $status $body'));
   }
 
   static Future<Map<String, dynamic>> request(
@@ -113,11 +110,13 @@ class ApiClient {
           ? <String, dynamic>{}
           : jsonDecode(response.body) as Map<String, dynamic>;
     } catch (_) {
-      throw Exception('Invalid server response (${response.statusCode})');
+      throw Exception(FriendlyErrors.message('Invalid server response ${response.statusCode}'));
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300 || decoded['success'] == false) {
-      throw Exception(decoded['message'] ?? 'Request failed (${response.statusCode})');
+      final msg = (decoded['message'] ?? decoded['error'] ?? '').toString().trim();
+      if (msg.isNotEmpty) throw Exception(msg);
+      throw Exception(FriendlyErrors.message('HTTP ${response.statusCode}'));
     }
 
     return decoded;

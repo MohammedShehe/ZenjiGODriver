@@ -6,6 +6,7 @@ import '../core/api/driver_api.dart';
 import '../core/live_map.dart';
 import '../core/theme.dart';
 import '../core/widgets.dart';
+import '../core/friendly_errors.dart';
 import 'active_ride.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -139,7 +140,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 } catch (e) {
                                   if (mounted && messenger != null) {
                                     messenger.showSnackBar(
-                                      SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                                      SnackBar(content: Text(FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili))),
                                     );
                                   }
                                 }
@@ -157,9 +158,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: EdgeInsets.fromLTRB(isNarrow ? 12 : 18, 0, isNarrow ? 12 : 18, 20),
                   children: [
                     LiveDriverMap(
-                      height: MediaQuery.sizeOf(context).height < 700 ? 260 : 390,
+                      height: MediaQuery.sizeOf(context).height < 700 ? 240 : 360,
                       showRequests: state.online,
                       shareLocation: state.online,
+                      isSwahili: state.isSwahili,
+                      isDark: Theme.of(context).brightness == Brightness.dark,
                     ),
                     const SizedBox(height: 16),
                     Row(
@@ -286,7 +289,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (next.isEmpty) return;
       request = next;
       _lastPromptedRequestId = '${request['id'] ?? ''}';
-    } catch(e) { if(mounted) toast(context,e.toString().replaceFirst('Exception: ','')); return; }
+    } catch(e) { if(mounted) toast(context,FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili)); return; }
     finally { _prompting = false; }
     if(!mounted) return;
     final pickup=request['pickupAddress'] ?? request['pickup_address'] ?? 'Nearby pickup';
@@ -390,7 +393,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 Navigator.push(context, MaterialPageRoute(builder: (_) => ActiveRideScreen(rideId: rideId)));
                               }
                             } catch (e) {
-                              final msg = e.toString().replaceFirst('Exception: ', '');
+                              final msg = FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili);
                               // Backend may have accepted even if payload parsing failed
                               final soft = msg.toLowerCase().contains('not found') == false &&
                                   (msg.toLowerCase().contains('accepted') || msg.isEmpty);
@@ -431,12 +434,15 @@ class _HomeScreenState extends State<HomeScreen> {
     showDialog(
       context: context,
       builder: (d) => AlertDialog(
-        title: const Text('Settlement required'),
+        title: Text(appScope.t('Settlement required', 'Malipo yanahitajika')),
         content: Text(
-          'You have reached the TZS ${data['threshold'] ?? 60000} earning threshold. Amount owed to ZenjiGO: TZS ${data['commissionOwed'] ?? 0}. Settle the balance before accepting new rides. Nearby requests remain anonymized.',
+          appScope.t(
+            'You have reached the TZS ${data['threshold'] ?? 60000} earning threshold. Amount owed to ZenjiGO: TZS ${data['commissionOwed'] ?? 0}. Settle the balance before accepting new rides.',
+            'Umefikia kiwango cha TZS ${data['threshold'] ?? 60000}. Deni kwa ZenjiGO: TZS ${data['commissionOwed'] ?? 0}. Lipa deni kabla ya kukubali safari mpya.',
+          ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Close')),
+          TextButton(onPressed: () => Navigator.pop(d), child: Text(appScope.t('Close', 'Funga'))),
           FilledButton(
             onPressed: () async {
               Navigator.pop(d);
@@ -445,18 +451,21 @@ class _HomeScreenState extends State<HomeScreen> {
                 await appScope.refreshFinance();
                 if (mounted && messenger != null) {
                   messenger.showSnackBar(
-                    const SnackBar(content: Text('Settlement created. Complete the payment through your configured provider.')),
+                    SnackBar(content: Text(appScope.t(
+                      'Settlement created. Complete the payment through your provider.',
+                      'Malipo yameanzishwa. Kamilisha kupitia mtoa huduma wako.',
+                    ))),
                   );
                 }
               } catch (e) {
                 if (mounted && messenger != null) {
                   messenger.showSnackBar(
-                    SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                    SnackBar(content: Text(FriendlyErrors.message(e, swahili: appScope.isSwahili))),
                   );
                 }
               }
             },
-            child: const Text('Start settlement'),
+            child: Text(appScope.t('Start settlement', 'Anza malipo')),
           ),
         ],
       ),

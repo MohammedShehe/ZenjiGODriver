@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/app_state.dart';
+import '../core/friendly_errors.dart';
 import '../core/api/driver_api.dart';
 import '../core/widgets.dart';
 import '../core/push_service.dart';
@@ -61,7 +62,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
       start();
       toast(context, 'OTP sent to $currentEmail.');
     } catch (e) {
-      if (mounted) toast(context, e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) toast(context, FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili));
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -103,7 +104,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
         );
       }
     } catch (e) {
-      if (mounted) toast(context, e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) toast(context, FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili));
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -120,15 +121,15 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Driver sign in')),
+        appBar: AppBar(title: Text(AppScope.of(context).t('Driver sign in', 'Ingia kama dereva'))),
         body: ResponsivePage(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 20),
-              Text('Welcome back', style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
+              Text(AppScope.of(context).t('Welcome back', 'Karibu tena'), style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
               const SizedBox(height: 8),
-              const Text('Sign in securely using the email address registered with ZenjiGO. No phone verification is required.'),
+              Text(AppScope.of(context).t('Sign in securely using the email registered with ZenjiGO.', 'Ingia kwa usalama ukitumia barua pepe iliyosajiliwa ZenjiGO.')),
               const SizedBox(height: 24),
               if (!sent) ...[
                 TextField(
@@ -141,7 +142,7 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                 const SizedBox(height: 16),
                 LoadingButton(label: 'Send email OTP', onPressed: send),
               ] else ...[
-                Text('Email code sent to ${_maskedEmail(currentEmail)}'),
+                Text(AppScope.of(context).t('Email code sent to', 'Nambari imetumwa kwa') + ' ${_maskedEmail(currentEmail)}'),
                 const SizedBox(height: 12),
                 TextField(
                   controller: otp,
@@ -156,13 +157,13 @@ class _DriverLoginScreenState extends State<DriverLoginScreen> {
                 Text(seconds > 0 ? 'Resend in $seconds s' : 'You can resend the OTP.'),
                 const SizedBox(height: 12),
                 LoadingButton(label: 'Verify & sign in', onPressed: verify),
-                TextButton(onPressed: loading || seconds > 0 ? null : send, child: const Text('Resend OTP')),
-                TextButton(onPressed: loading ? null : backToDetails, child: const Text('Change email')),
+                TextButton(onPressed: loading || seconds > 0 ? null : send, child: Text(AppScope.of(context).t('Resend OTP', 'Tuma OTP tena'))),
+                TextButton(onPressed: loading ? null : backToDetails, child: Text(AppScope.of(context).t('Change email', 'Badilisha barua pepe'))),
               ],
               const SizedBox(height: 24),
               OutlinedButton(
                 onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegistrationScreen())),
-                child: const Text('Register as a driver'),
+                child: Text(AppScope.of(context).t('Register as a driver', 'Jisajili kama dereva')),
               ),
             ],
           ),

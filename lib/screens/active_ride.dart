@@ -5,6 +5,7 @@ import '../core/api/driver_api.dart';
 import '../core/live_map.dart';
 import '../core/theme.dart';
 import '../core/widgets.dart';
+import '../core/friendly_errors.dart';
 import 'chat.dart';
 
 class ActiveRideScreen extends StatefulWidget {
@@ -112,7 +113,17 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                 child: ListView(
                   padding: const EdgeInsets.all(18),
                   children: [
-                    LiveDriverMap(height: 300, activeRideId: widget.rideId, showRequests: false, shareLocation: true),
+                    Builder(builder: (ctx) {
+                      final s = AppScope.of(ctx);
+                      return LiveDriverMap(
+                        height: MediaQuery.sizeOf(ctx).height < 700 ? 240 : 300,
+                        activeRideId: widget.rideId,
+                        showRequests: false,
+                        shareLocation: true,
+                        isSwahili: s.isSwahili,
+                        isDark: Theme.of(ctx).brightness == Brightness.dark,
+                      );
+                    }),
                     const SizedBox(height: 14),
                     Card(
                       child: Padding(
@@ -183,7 +194,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                           child: OutlinedButton.icon(
                             onPressed: _report,
                             icon: const Icon(Icons.flag_outlined),
-                            label: const Text('Report rider'),
+                            label: Text(AppScope.of(context).t('Report rider', 'Ripoti abiria')),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -191,7 +202,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                           child: OutlinedButton.icon(
                             onPressed: _support,
                             icon: const Icon(Icons.support_agent),
-                            label: const Text('ZenjiGO support'),
+                            label: Text(AppScope.of(context).t('ZenjiGO support', 'Msaada wa ZenjiGO')),
                           ),
                         ),
                       ],
@@ -244,7 +255,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                     } catch (e) {
                       if (mounted && messenger != null) {
                         messenger.showSnackBar(
-                          SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+                          SnackBar(content: Text(FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili))),
                         );
                       }
                     }
@@ -294,7 +305,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
       toast(context, AppScope.of(context).t('Ride cancelled.', 'Safari imeghairiwa.'));
       Navigator.of(context).pop();
     } catch (e) {
-      if (mounted) toast(context, e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) toast(context, FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili));
     }
   }
 
@@ -340,7 +351,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
               const SizedBox(height: 14),
               ListTile(
                 leading: const Icon(Icons.chat),
-                title: const Text('In-app chat'),
+                title: Text(AppScope.of(context).t('In-app chat', 'Mazungumzo katika programu')),
                 onTap: () {
                   Navigator.pop(sheetContext);
                   Navigator.push(
@@ -377,7 +388,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Report rider'),
+          title: Text(AppScope.of(context).t('Report rider', 'Ripoti abiria')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -432,7 +443,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                   }
                 }
               },
-              child: const Text('Continue'),
+              child: Text(AppScope.of(context).t('Continue', 'Endelea')),
             ),
           ],
         ),
@@ -450,7 +461,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
           color: ZenjiColors.green,
           size: 52,
         ),
-        title: const Text('Ride completed'),
+        title: Text(AppScope.of(context).t('Ride completed', 'Safari imekamilika')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -469,7 +480,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
               Navigator.pop(dialogContext);
               Navigator.pop(context);
             },
-            child: const Text('Back to Home'),
+            child: Text(AppScope.of(context).t('Back to Home', 'Rudi Nyumbani')),
           ),
         ],
       ),

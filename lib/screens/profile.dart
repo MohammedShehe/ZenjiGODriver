@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../core/app_state.dart';
+import '../core/friendly_errors.dart';
 import '../core/theme.dart';
 import '../core/widgets.dart';
 import 'package:http/http.dart' as http;
@@ -28,7 +29,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await s.refreshProfile();
       if (mounted) toast(context, s.t('Profile photo updated', 'Picha ya wasifu imesasishwa'));
     } catch (e) {
-      if (mounted) toast(context, e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) toast(context, FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili));
     } finally {
       if (mounted) setState(() => uploadingPhoto = false);
     }
@@ -41,7 +42,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await s.refreshProfile();
       if (mounted) toast(context, s.t('Profile photo removed', 'Picha ya wasifu imeondolewa'));
     } catch (e) {
-      if (mounted) toast(context, e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) toast(context, FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili));
     }
   }
 
@@ -309,7 +310,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
       setState(() { items = rows; loading = false; });
     } catch (e) {
       if (!mounted) return;
-      setState(() { loading = false; error = e.toString().replaceFirst('Exception: ', ''); });
+      setState(() { loading = false; error = FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili); });
     }
   }
 
@@ -399,7 +400,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       setState(() { items = rows; loading = false; });
     } catch (e) {
       if (!mounted) return;
-      setState(() { loading = false; error = e.toString().replaceFirst('Exception: ', ''); });
+      setState(() { loading = false; error = FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili); });
     }
   }
 
@@ -549,7 +550,7 @@ class _ProfileChangeRequestScreenState extends State<ProfileChangeRequestScreen>
       );
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      if (mounted) toast(context, e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) toast(context, FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili));
     } finally {
       if (mounted) setState(() => sending = false);
     }
@@ -636,7 +637,7 @@ class _VehicleChangeRequestScreenState extends State<VehicleChangeRequestScreen>
       toast(context, s.t('Vehicle change request submitted', 'Ombi la mabadiliko ya gari limetumwa'));
       Navigator.pop(context);
     } catch (e) {
-      if (mounted) toast(context, e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) toast(context, FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili));
     } finally {
       if (mounted) setState(() => sending = false);
     }
@@ -743,7 +744,7 @@ class _DocumentChangeRequestScreenState extends State<DocumentChangeRequestScree
       toast(context, s.t('Document update request submitted', 'Ombi la sasisho la nyaraka limetumwa'));
       Navigator.pop(context);
     } catch (e) {
-      if (mounted) toast(context, e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) toast(context, FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili));
     } finally {
       if (mounted) setState(() => sending = false);
     }

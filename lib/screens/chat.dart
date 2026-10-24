@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/api/driver_api.dart';
 import '../core/app_state.dart';
+import '../core/friendly_errors.dart';
 import '../core/theme.dart';
 import '../core/widgets.dart';
 
@@ -42,7 +43,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
         app.notifyListeners();
       }
     } catch (e) {
-      if (mounted) setState(() { error = e.toString().replaceFirst('Exception: ', ''); loading = false; });
+      if (mounted) setState(() { error = FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili); loading = false; });
     }
   }
 
@@ -55,7 +56,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
       await Navigator.push(context, MaterialPageRoute(builder: (_) => ChatScreen(
         name: 'ZenjiGO Support', support: true, conversationId: id)));
       _load();
-    } catch (e) { if (mounted) toast(context, e.toString().replaceFirst('Exception: ', '')); }
+    } catch (e) { if (mounted) toast(context, FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili)); }
   }
 
   @override
@@ -150,7 +151,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await _loadMessages();
       poller = Timer.periodic(const Duration(seconds: 8), (_) => _loadMessages(silent: true));
     } catch (e) {
-      if (mounted) setState(() { error = e.toString().replaceFirst('Exception: ', ''); loading = false; });
+      if (mounted) setState(() { error = FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili); loading = false; });
     }
   }
 
@@ -170,7 +171,7 @@ class _ChatScreenState extends State<ChatScreen> {
       AppScope.of(context).refreshUnreadMessages();
       if (!silent && scroll.hasClients) scroll.jumpTo(scroll.position.maxScrollExtent);
     } catch (e) {
-      if (mounted) setState(() { if (!silent) error = e.toString().replaceFirst('Exception: ', ''); loading = false; });
+      if (mounted) setState(() { if (!silent) error = FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili); loading = false; });
     }
   }
 
@@ -184,7 +185,7 @@ class _ChatScreenState extends State<ChatScreen> {
       controller.clear();
       await _loadMessages();
     } catch (e) {
-      if (mounted) toast(context, e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) toast(context, FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili));
     } finally { if (mounted) setState(() => sending = false); }
   }
 
