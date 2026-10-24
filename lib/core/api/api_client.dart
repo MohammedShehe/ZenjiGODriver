@@ -12,10 +12,12 @@ class ApiClient {
   /// Physical device → your PC LAN IP (same Wi‑Fi), e.g. http://192.168.x.x:5000/api/v1
   static const baseUrl = String.fromEnvironment(
     'ZENJIGO_API_URL',
-    defaultValue: 'https://zenjigo-backend.onrender.com/api/v1',
+    defaultValue: 'http://192.168.0.114:5000/api/v1',
   );
 
-  static const Duration requestTimeout = Duration(seconds: 15);
+  static const Duration requestTimeout = Duration(seconds: 60);
+
+  static Future<String?> get accessToken async => _token();
 
   static Future<String?> _token() async {
     final prefs = await SharedPreferences.getInstance();

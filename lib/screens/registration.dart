@@ -1,9 +1,13 @@
+import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../core/api/driver_api.dart';
 import '../core/app_state.dart';
 import '../core/widgets.dart';
 import 'main_shell.dart';
+import 'login.dart';
+import '../core/api/api_client.dart';
 
 class _CountryCode {
   final String name, iso, dial, flag;
@@ -28,6 +32,112 @@ const _countries = <_CountryCode>[
   _CountryCode('Australia', 'AU', '+61', '🇦🇺'),
 ];
 
+class _CountryPicker extends StatelessWidget {
+  const _CountryPicker({required this.selected});
+
+  final _CountryCode selected;
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        child: Container(
+          margin: const EdgeInsets.only(top: 48),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'Select country',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _countries.length,
+                  itemBuilder: (context, index) {
+                    final country = _countries[index];
+                    return ListTile(
+                      leading: Text(country.flag, style: const TextStyle(fontSize: 24)),
+                      title: Text(country.name),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(country.dial),
+                          if (country.iso == selected.iso) ...[
+                            const SizedBox(width: 8),
+                            const Icon(Icons.check),
+                          ],
+                        ],
+                      ),
+                      onTap: () => Navigator.of(context).pop(country),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class _OtpCodeDialog extends StatefulWidget {
+  const _OtpCodeDialog({
+    required this.title,
+    required this.label,
+    required this.cancelLabel,
+    required this.confirmLabel,
+  });
+
+  final String title;
+  final String label;
+  final String cancelLabel;
+  final String confirmLabel;
+
+  @override
+  State<_OtpCodeDialog> createState() => _OtpCodeDialogState();
+}
+
+class _OtpCodeDialogState extends State<_OtpCodeDialog> {
+  final _codeController = TextEditingController();
+
+  @override
+  void dispose() {
+    _codeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text(widget.title),
+        content: TextField(
+          controller: _codeController,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _confirm(),
+          decoration: InputDecoration(labelText: widget.label),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(widget.cancelLabel),
+          ),
+          FilledButton(
+            onPressed: _confirm,
+            child: Text(widget.confirmLabel),
+          ),
+        ],
+      );
+
+  void _confirm() {
+    final code = _codeController.text.trim();
+    if (code.isNotEmpty) Navigator.of(context).pop(code);
+  }
+}
+
 class RegistrationScreen extends StatefulWidget {
   const RegistrationScreen({super.key});
   @override
@@ -49,6 +159,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final colorController = TextEditingController();
   final yearController = TextEditingController();
   final Map<String, List<String>> selectedFiles = {};
+  final Map<String, String> documentExpirations = {}; // key -> YYYY-MM-DD
   String vehicle = 'Taxi';
   _CountryCode country = _countries.first;
   bool emailVerified = false;
@@ -154,7 +265,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         const SizedBox(height: 14),
         _field(AppScope.of(context).t('National ID number', 'Namba ya kitambulisho cha taifa'), Icons.badge_outlined, controller: nationalIdController),
         const SizedBox(height: 14),
-        _field(AppScope.of(context).t('Home area / address', 'Eneo la nyumbani / anwani'), Icons.home_outlined, required: false, controller: addressController),
+        PlacesAutocompleteField(controller: addressController, label: AppScope.of(context).t('Home area / address', 'Eneo la nyumbani / anwani')),
       ]);
 
   Widget _phoneField() => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -294,11 +405,41 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         email:emailController.text.trim(),nationalId:nationalIdController.text.trim(),homeAddress:addressController.text.trim(),
         vehicleType:vehicle.toLowerCase(),plateNumber:plateController.text.trim(),vehicleMake:makeController.text.trim(),
         vehicleModel:modelController.text.trim(),vehicleColor:colorController.text.trim(),modelYear:int.tryParse(yearController.text.trim()),
-        emailOtpCode:emailOtpCode!,files:selectedFiles);
+        emailOtpCode:emailOtpCode!,files:selectedFiles,expirations:documentExpirations);
+      if(!mounted)return;
+      final id = result['driverId'] ?? result['driver_id'] ?? result['id'];
+      // Persist auth session from registration response so profile/photo work immediately
+      if (result['accessToken'] != null || result['access_token'] != null) {
+        await AppScope.of(context).login(result);
+      } else if (id != null && emailController.text.trim().isNotEmpty) {
+        try {
+          final session = await DriverApi.bootstrapSession(
+            driverId: id.toString(),
+            email: emailController.text.trim(),
+          );
+          if (session['accessToken'] != null) {
+            await AppScope.of(context).login(session);
+          }
+        } catch (_) {}
+      }
       if(!mounted)return;
       toast(context,AppScope.of(context).t('Application submitted successfully.','Ombi limetumwa kwa mafanikio.'));
-      Navigator.pushReplacement(context,MaterialPageRoute(builder:(_)=>ApplicationTrackingScreen(driverId:result['driverId'].toString())));
-    }catch(e){if(mounted)toast(context,e.toString().replaceFirst('Exception: ',''));}
+      if(!mounted)return;
+      Navigator.pushReplacement(context,MaterialPageRoute(builder:(_)=>ApplicationTrackingScreen(driverId: id?.toString(), email: emailController.text.trim())));
+    }catch(e){
+      final msg = e.toString().replaceFirst('Exception: ','');
+      // If backend already created the driver (timeout after success), still go to tracking
+      if (msg.toLowerCase().contains('already') || msg.toLowerCase().contains('exist')) {
+        if(mounted) toast(context, msg);
+      } else if (msg.toLowerCase().contains('timeout') || msg.toLowerCase().contains('timed out')) {
+        if(mounted) {
+          toast(context, AppScope.of(context).t('Submitted — checking status…','Imewasilishwa — inakagua hali…'));
+          Navigator.pushReplacement(context,MaterialPageRoute(builder:(_)=>const ApplicationTrackingScreen()));
+        }
+      } else {
+        if(mounted) toast(context, msg);
+      }
+    }
   }
 
   Widget _vehicle() => _wrap(1, AppScope.of(context).t('Vehicle details', 'Taarifa za gari'), AppScope.of(context).t('Add the vehicle you will use for ZenjiGO rides.', 'Ongeza gari utakalotumia kwa safari za ZenjiGO.'), [
@@ -335,23 +476,35 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         decoration: InputDecoration(labelText: label, prefixIcon: Icon(icon)),
       );
 
+  String _docKey(String title) {
+    final lower = title.toLowerCase();
+    if (lower.contains('license') || lower.contains('leseni')) return 'license';
+    if (lower.contains('id') || lower.contains('kitambulisho')) return 'nationalId';
+    if (lower.contains('insurance') || lower.contains('bima')) return 'insurance';
+    if (lower.contains('vehicle') || lower.contains('gari')) return 'vehiclePhotos';
+    if (lower.contains('driver photo') || lower.contains('picha ya dereva')) return 'driverPhoto';
+    return title.replaceAll(RegExp(r'[^a-zA-Z]'), '');
+  }
+
   Widget _upload(String title, String sub, IconData icon, {bool multiple = false}) {
-    final key = _fileKey(title);
-    final paths = selectedFiles[key] ?? const <String>[];
     final t = AppScope.of(context);
+    final key = _docKey(title);
+    final paths = selectedFiles[key] ?? const <String>[];
+    final needsExpiry = key == 'license' || key == 'insurance' || key == 'nationalId';
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            CircleAvatar(child: Icon(icon)),
+            CircleAvatar(
+              backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: .12),
+              child: Icon(icon, color: Theme.of(context).colorScheme.primary, size: 20),
+            ),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-              const SizedBox(height: 3),
-              Text(paths.isEmpty ? sub : '${paths.length} file(s) selected',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .65))),
+              Text(sub, style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .55))),
             ])),
             FilledButton.tonal(
               onPressed: () async {
@@ -360,18 +513,12 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                     allowMultiple: multiple,
                     type: FileType.custom,
                     allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'pdf'],
-                    withData: false,
-                    lockParentWindow: true,
                   );
-                  if (!mounted || result == null) return;
+                  if (result == null || result.files.isEmpty) return;
                   final picked = result.files.where((f) => f.path != null).toList();
-                  if (picked.isEmpty) {
-                    toast(context, t.t('Could not access the selected file. Please choose a file stored on this device.', 'Haiwezi kufikia faili lililochaguliwa.'));
-                    return;
-                  }
                   final valid = picked.where((f) {
                     final ext = (f.extension ?? '').toLowerCase();
-                    return const {'jpg', 'jpeg', 'png', 'webp', 'pdf'}.contains(ext);
+                    return {'jpg', 'jpeg', 'png', 'webp', 'pdf'}.contains(ext);
                   }).toList();
                   if (valid.length != picked.length) {
                     toast(context, t.t('Only JPG, PNG, WEBP and PDF files are supported.', 'Aina za JPG, PNG, WEBP na PDF pekee zinakubaliwa.'));
@@ -395,193 +542,411 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
             ),
           ]),
           if (paths.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            ...paths.asMap().entries.map((entry) {
-              final path = entry.value;
-              final filename = path.replaceAll('\\', '/').split('/').last;
-              return Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Row(children: [
-                  Icon(filename.toLowerCase().endsWith('.pdf') ? Icons.picture_as_pdf_outlined : Icons.image_outlined, size: 19),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(filename, maxLines: 2, overflow: TextOverflow.ellipsis)),
-                  IconButton(
-                    tooltip: t.t('Remove file', 'Ondoa faili'),
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () => setState(() {
-                      final updated = List<String>.from(selectedFiles[key] ?? []);
-                      updated.removeAt(entry.key);
-                      selectedFiles[key] = updated;
-                    }),
-                    icon: const Icon(Icons.close_rounded, size: 19),
-                  ),
-                ]),
-              );
-            }),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 88,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: paths.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (ctx, i) {
+                  final path = paths[i];
+                  final isPdf = path.toLowerCase().endsWith('.pdf');
+                  return Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: isPdf
+                            ? Container(
+                                width: 88,
+                                height: 88,
+                                color: Theme.of(context).colorScheme.primary.withValues(alpha: .08),
+                                child: const Icon(Icons.picture_as_pdf, size: 36),
+                              )
+                            : Image.file(
+                                // ignore: prefer_const_constructors
+                                // File requires dart:io
+                                // Using File via dynamic path
+                                // We'll use a helper below
+                                File(path),
+                                width: 88,
+                                height: 88,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  width: 88,
+                                  height: 88,
+                                  color: Colors.black12,
+                                  child: const Icon(Icons.broken_image_outlined),
+                                ),
+                              ),
+                      ),
+                      Positioned(
+                        top: 2,
+                        right: 2,
+                        child: Material(
+                          color: Colors.black54,
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: () => setState(() {
+                              final updated = List<String>.from(selectedFiles[key] ?? []);
+                              updated.removeAt(i);
+                              selectedFiles[key] = updated;
+                            }),
+                            child: const Padding(
+                              padding: EdgeInsets.all(4),
+                              child: Icon(Icons.close, size: 14, color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+          if (needsExpiry) ...[
+            const SizedBox(height: 10),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              leading: const Icon(Icons.event_outlined),
+              title: Text(t.t('Expiration date', 'Tarehe ya mwisho')),
+              subtitle: Text(documentExpirations[key] ?? t.t('Tap to set (required for license/insurance)', 'Gusa kuweka (inahitajika kwa leseni/bima)')),
+              trailing: const Icon(Icons.edit_calendar_outlined),
+              onTap: () async {
+                final now = DateTime.now();
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: now.add(const Duration(days: 365)),
+                  firstDate: now,
+                  lastDate: now.add(const Duration(days: 365 * 15)),
+                );
+                if (picked != null && mounted) {
+                  final formatted = '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
+                  setState(() => documentExpirations[key] = formatted);
+                }
+              },
+            ),
           ],
         ]),
       ),
     );
   }
 
-String _fileKey(String title) {
-  final l = title.toLowerCase();
-  if (l.contains('license') && !l.contains('insurance')) {
-    return 'license';
-  }
-  if (l.contains('id') || l.contains('kitambulisho')) {
-    return 'nationalId';
-  }
-  if (l.contains('insurance') || l.contains('bima')) {
-    return 'insurance';
-  }
-  if (l.contains('vehicle')) {
-    return 'vehiclePhotos';
-  }
-  return 'driverPhoto';
-}
-
 }
 
 
 
-/// Owns its TextEditingController so it is disposed only after the dialog unmounts.
-class _OtpCodeDialog extends StatefulWidget {
-  final String title;
+class PlacesAutocompleteField extends StatefulWidget {
+  const PlacesAutocompleteField({super.key, required this.controller, required this.label});
+  final TextEditingController controller;
   final String label;
-  final String cancelLabel;
-  final String confirmLabel;
-  const _OtpCodeDialog({
-    required this.title,
-    required this.label,
-    required this.cancelLabel,
-    required this.confirmLabel,
-  });
-
   @override
-  State<_OtpCodeDialog> createState() => _OtpCodeDialogState();
+  State<PlacesAutocompleteField> createState() => _PlacesAutocompleteFieldState();
 }
 
-class _OtpCodeDialogState extends State<_OtpCodeDialog> {
-  late final TextEditingController _ctrl = TextEditingController();
+class _PlacesAutocompleteFieldState extends State<PlacesAutocompleteField> {
+  List<Map<String, dynamic>> suggestions = [];
+  bool loading = false;
+  Timer? _debounce;
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _debounce?.cancel();
     super.dispose();
+  }
+
+  void _onChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () async {
+      if (value.trim().length < 2) {
+        if (mounted) setState(() => suggestions = []);
+        return;
+      }
+      setState(() => loading = true);
+      try {
+        final list = await DriverApi.placesAutocomplete(value.trim());
+        if (!mounted) return;
+        setState(() { suggestions = list; loading = false; });
+      } catch (_) {
+        if (mounted) setState(() { suggestions = []; loading = false; });
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.title),
-      content: TextField(
-        controller: _ctrl,
-        keyboardType: TextInputType.number,
-        maxLength: 8,
-        autofocus: true,
-        decoration: InputDecoration(labelText: widget.label),
-        onSubmitted: (v) => Navigator.pop(context, v.trim()),
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: Text(widget.cancelLabel)),
-        FilledButton(onPressed: () => Navigator.pop(context, _ctrl.text.trim()), child: Text(widget.confirmLabel)),
-      ],
-    );
-  }
-}
-
-class _CountryPicker extends StatefulWidget {
-  final _CountryCode selected;
-  const _CountryPicker({required this.selected});
-  @override State<_CountryPicker> createState() => _CountryPickerState();
-}
-
-class _CountryPickerState extends State<_CountryPicker> {
-  final controller = TextEditingController();
-
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final q = controller.text.trim().toLowerCase();
-    final filtered = _countries
-        .where((c) => c.name.toLowerCase().contains(q) || c.iso.toLowerCase().contains(q) || c.dial.contains(q))
-        .toList();
-
-    return SafeArea(
-      child: Container(
-        height: MediaQuery.sizeOf(context).height * .78,
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      TextFormField(
+        controller: widget.controller,
+        onChanged: _onChanged,
+        maxLines: 2,
+        validator: (v) => (v == null || v.trim().isEmpty)
+            ? AppScope.of(context).t('Home address is required', 'Anwani ya nyumbani inahitajika')
+            : null,
+        decoration: InputDecoration(
+          labelText: widget.label,
+          prefixIcon: const Icon(Icons.location_on_outlined),
+          suffixIcon: loading
+              ? const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)))
+              : const Icon(Icons.search),
         ),
+      ),
+      if (suggestions.isNotEmpty)
+        Card(
+          margin: const EdgeInsets.only(top: 6),
+          child: ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: suggestions.length.clamp(0, 6),
+            separatorBuilder: (_, __) => const Divider(height: 1),
+            itemBuilder: (ctx, i) {
+              final s = suggestions[i];
+              final main = (s['structured'] is Map ? s['structured']['main'] : null) ?? s['description'] ?? '';
+              final secondary = (s['structured'] is Map ? s['structured']['secondary'] : null) ?? '';
+              return ListTile(
+                dense: true,
+                leading: const Icon(Icons.place_outlined, size: 20),
+                title: Text('$main', maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: secondary.toString().isEmpty ? null : Text('$secondary', maxLines: 1, overflow: TextOverflow.ellipsis),
+                onTap: () {
+                  widget.controller.text = (s['description'] ?? main).toString();
+                  setState(() => suggestions = []);
+                  FocusScope.of(context).unfocus();
+                },
+              );
+            },
+          ),
+        ),
+    ]);
+  }
+}
+
+class ApplicationTrackingScreen extends StatefulWidget {
+  const ApplicationTrackingScreen({super.key, this.driverId, this.email});
+
+  final String? driverId;
+  final String? email;
+
+  @override
+  State<ApplicationTrackingScreen> createState() => _ApplicationTrackingScreenState();
+}
+
+class _ApplicationTrackingScreenState extends State<ApplicationTrackingScreen> {
+  bool loading = false;
+  String status = 'Pending';
+  String? rejectionReason;
+  Timer? _poll;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    _poll = Timer.periodic(const Duration(seconds: 30), (_) => _refresh());
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    if (loading) return;
+    setState(() => loading = true);
+    try {
+      final id = widget.driverId;
+      Map<String, dynamic>? data;
+      if (id != null && id.isNotEmpty) {
+        data = await DriverApi.applicationStatus(id);
+      } else {
+        await AppScope.of(context).refreshProfile();
+        final profile = AppScope.of(context).profile;
+        data = {
+          'applicationStatus': profile?['application_status'] ?? profile?['applicationStatus'],
+        };
+      }
+      if (!mounted) return;
+      final next = (data?['applicationStatus'] ?? data?['application_status'] ?? status).toString();
+      final reason = data?['rejectionReason']?.toString();
+      setState(() {
+        status = next;
+        if (reason != null && reason.isNotEmpty) rejectionReason = reason;
+      });
+      // Auto-enter when approved/active
+      final s = next.toLowerCase();
+      if (s == 'approved' || s == 'active') {
+        _poll?.cancel();
+        // soft delay then offer enter - auto if Active
+        if (s == 'active') {
+          await Future.delayed(const Duration(milliseconds: 600));
+          if (!mounted) return;
+          await _enterApp();
+        }
+      }
+    } catch (e) {
+      // keep previous status
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> _enterApp() async {
+    final appState = AppScope.of(context);
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    // Ensure we have a valid auth session before entering the main app
+    try {
+      final token = await ApiClient.accessToken;
+      if (token == null || token.isEmpty) {
+        final id = widget.driverId;
+        final email = widget.email ?? appState.profile?['email']?.toString();
+        if (id != null && email != null && email.toString().isNotEmpty) {
+          final session = await DriverApi.bootstrapSession(driverId: id, email: email.toString());
+          await appState.login(session);
+        }
+      } else {
+        // Refresh profile with existing token so UI is not offline/empty
+        await appState.refreshProfile();
+        await appState.refreshFinance();
+      }
+    } catch (e) {
+      if (mounted && messenger != null) {
+        messenger.showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+      }
+      // Still try to enter if we at least have a token
+      final token = await ApiClient.accessToken;
+      if (token == null || token.isEmpty) {
+        if (mounted && messenger != null) {
+          messenger.showSnackBar(const SnackBar(
+            content: Text('Could not start session. Please log in with your email OTP.'),
+          ));
+        }
+        if (!mounted) return;
+        navigator.pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const DriverLoginScreen()), (_) => false);
+        return;
+      }
+    }
+    appState.setApplicationStatus('Active');
+    if (!mounted) return;
+    navigator.pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const MainShell()), (_) => false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppScope.of(context);
+    final st = status;
+    final approved = st == 'Approved' || st == 'Active' || st.toLowerCase() == 'approved' || st.toLowerCase() == 'active';
+    final rejected = st == 'Rejected' || st.toLowerCase() == 'rejected';
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(s.t('Application status', 'Hali ya ombi')),
+        actions: [
+          if (loading) const Padding(padding: EdgeInsets.all(12), child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))),
+          const ThemeLanguageRow(),
+          const SizedBox(width: 12),
+        ],
+      ),
+      body: ResponsivePage(
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 10),
-            Container(
-              width: 44,
-              height: 5,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .18),
-                borderRadius: BorderRadius.circular(99),
-              ),
+            const SizedBox(height: 12),
+            Text(s.t('Registration progress', 'Maendeleo ya usajili'), style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            Text(
+              s.t('Your documents are checked manually by the ZenjiGO admin team. Status refreshes automatically.', 'Nyaraka zako zinakaguliwa kwa mikono na timu ya usimamizi ya ZenjiGO. Hali inasasishwa moja kwa moja.'),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .67)),
             ),
-            const SizedBox(height: 16),
-            const Text('Select country code', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
-              child: TextField(
-                controller: controller,
-                onChanged: (_) => setState(() {}),
-                autofocus: true,
-                decoration: InputDecoration(
-                  prefixIcon: Icon(Icons.search),
-                  hintText: AppScope.of(context).t('Search country, ISO or +code', 'Tafuta nchi, ISO au +code'),
+            const SizedBox(height: 26),
+            ..._steps(),
+            const SizedBox(height: 18),
+            if (rejected)
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.error_outline, color: Colors.redAccent),
+                  title: Text(s.t('Application rejected', 'Ombi limekataliwa'), style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(rejectionReason?.isNotEmpty == true
+                      ? rejectionReason!
+                      : s.t('Please contact ZenjiGO support for the review decision and next steps.', 'Wasiliana na msaada wa ZenjiGO kuhusu uamuzi na hatua zinazofuata.')),
                 ),
               ),
-            ),
-            Expanded(
-              child: ListView.builder(
-                itemCount: filtered.length,
-                itemBuilder: (_, i) {
-                  final c = filtered[i];
-                  final selected = c.iso == widget.selected.iso;
-                  return ListTile(
-                    leading: Text(c.flag, style: const TextStyle(fontSize: 27)),
-                    title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text(c.iso),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(c.dial, style: const TextStyle(fontWeight: FontWeight.w800)),
-                        if (selected) ...[
-                          const SizedBox(width: 8),
-                          const Icon(Icons.check_circle_rounded),
-                        ],
-                      ],
-                    ),
-                    onTap: () => Navigator.pop(context, c),
-                  );
-                },
+            if (approved)
+              LoadingButton(
+                label: s.t('Enter ZenjiGO Driver', 'Ingia ZenjiGO Dereva'),
+                icon: Icons.local_taxi_rounded,
+                onPressed: _enterApp,
               ),
-            ),
+            if (!approved && !rejected) ...[
+              LoadingButton(
+                label: s.t('Refresh application status', 'Sasisha hali ya ombi'),
+                outline: true,
+                onPressed: _refresh,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                s.t('Statuses: Pending → Under Review → Approved / Rejected → Active', 'Hali: Inasubiri → Inakaguliwa → Imeidhinishwa / Imekataliwa → Aktivu'),
+                style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .55)),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
-}
 
-class ApplicationTrackingScreen extends StatefulWidget { const ApplicationTrackingScreen({super.key, this.driverId});
-  final String? driverId; @override State<ApplicationTrackingScreen> createState() => _ApplicationTrackingScreenState(); }
-class _ApplicationTrackingScreenState extends State<ApplicationTrackingScreen> {
-  String status = 'Under Review';
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(AppScope.of(context).t('Application status', 'Hali ya ombi')), actions: [const ThemeLanguageRow(), const SizedBox(width: 12)]), body: ResponsivePage(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const SizedBox(height: 12), Text(AppScope.of(context).t('Registration progress', 'Maendeleo ya usajili'), style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900)), const SizedBox(height: 8), Text(AppScope.of(context).t('Your documents are checked manually by the ZenjiGO admin team.', 'Nyaraka zako zinakaguliwa kwa mikono na timu ya usimamizi ya ZenjiGO.'), style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .67))), const SizedBox(height: 26), ..._steps(), const SizedBox(height: 18), if (status == 'Rejected') Card(child: ListTile(leading: const Icon(Icons.error_outline, color: Colors.redAccent), title: Text(AppScope.of(context).t('Application rejected', 'Ombi limekataliwa'), style: const TextStyle(fontWeight: FontWeight.bold)), subtitle: Text(AppScope.of(context).t('Please contact ZenjiGO support for the review decision and next steps.', 'Wasiliana na msaada wa ZenjiGO kuhusu uamuzi na hatua zinazofuata.')))), if (status == 'Approved' || status == 'Active') LoadingButton(label: AppScope.of(context).t('Enter ZenjiGO Driver', 'Ingia ZenjiGO Dereva'), icon: Icons.local_taxi_rounded, onPressed: () async { final appState = AppScope.of(context); final navigator = Navigator.of(context); await fakeDelay(); if (!mounted) return; appState.setApplicationStatus('Active'); if (!mounted) return; navigator.pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const MainShell()), (_) => false); }), if (status != 'Approved' && status != 'Active') LoadingButton(label: AppScope.of(context).t('Refresh application status', 'Sasisha hali ya ombi'), outline: true, onPressed: () async { try { await AppScope.of(context).refreshProfile(); final profile = AppScope.of(context).profile; final next = profile?['application_status'] ?? profile?['applicationStatus']; if (!mounted) return; if (next != null) { setState(() => status = next.toString()); } else { toast(context, 'Application status is not available yet. Please contact support if this persists.'); } } catch (_) { if (mounted) toast(context, 'Could not refresh status. Check your connection and try again.'); } }), const SizedBox(height: 12), Text(AppScope.of(context).t('Statuses: Pending → Under Review → Approved / Rejected → Active', 'Hali: Inasubiri → Inakaguliwa → Imeidhinishwa / Imekataliwa → Aktivu'), style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .55))) ])));
-  List<Widget> _steps() { final s = AppScope.of(context);
-    final labels = [s.t('Pending', 'Inasubiri'), s.t('Under Review', 'Inakaguliwa'), s.t('Approved', 'Imeidhinishwa'), s.t('Active', 'Aktivu')]; final current = status == 'Rejected' ? 1 : labels.indexOf(status); return List.generate(labels.length, (i) { final done = i <= current; return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Column(children: [CircleAvatar(radius: 18, backgroundColor: done ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface.withValues(alpha: .1), child: Icon(done ? Icons.check : Icons.more_horiz, size: 18, color: done ? Colors.white : null)), if (i < labels.length - 1) Container(width: 2, height: 42, color: done ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface.withValues(alpha: .1))]), const SizedBox(width: 14), Expanded(child: Padding(padding: const EdgeInsets.only(top: 7), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(labels[i], style: TextStyle(fontWeight: FontWeight.w800, color: done ? null : Theme.of(context).colorScheme.onSurface.withValues(alpha: .45))), if (i == current) Padding(padding: const EdgeInsets.only(top: 3), child: Text(i == 1 ? AppScope.of(context).t('Admin is checking your identity, vehicle and documents.', 'Msimamizi anakagua utambulisho wako, gari na nyaraka.') : AppScope.of(context).t('Current application stage', 'Hatua ya sasa ya ombi'), style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .6))))])))]); }); }
+  List<Widget> _steps() {
+    final s = AppScope.of(context);
+    final labels = [
+      s.t('Pending', 'Inasubiri'),
+      s.t('Under Review', 'Inakaguliwa'),
+      s.t('Approved', 'Imeidhinishwa'),
+      s.t('Active', 'Aktivu'),
+    ];
+    final normalized = status.toLowerCase();
+    int current = 1;
+    if (normalized.contains('pending')) current = 0;
+    else if (normalized.contains('review')) current = 1;
+    else if (normalized.contains('approved')) current = 2;
+    else if (normalized.contains('active')) current = 3;
+    else if (normalized.contains('reject')) current = 1;
+    return List.generate(labels.length, (i) {
+      final done = i <= current;
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: done ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface.withValues(alpha: .1),
+              child: Icon(done ? Icons.check : Icons.more_horiz, size: 18, color: done ? Colors.white : null),
+            ),
+            if (i < labels.length - 1)
+              Container(width: 2, height: 42, color: done ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface.withValues(alpha: .1)),
+          ]),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 7),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(labels[i], style: TextStyle(fontWeight: FontWeight.w800, color: done ? null : Theme.of(context).colorScheme.onSurface.withValues(alpha: .45))),
+                if (i == current)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Text(
+                      i == 1
+                          ? s.t('Admin is checking your identity, vehicle and documents.', 'Msimamizi anakagua utambulisho wako, gari na nyaraka.')
+                          : s.t('Current application stage', 'Hatua ya sasa ya ombi'),
+                      style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .6)),
+                    ),
+                  ),
+              ]),
+            ),
+          ),
+        ],
+      );
+    });
+  }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zenjigodriver/core/api/api_client.dart';
@@ -14,6 +15,10 @@ class AppState extends ChangeNotifier {
   Map<String, dynamic>? finance;
   String? activeRideId;
   int unreadMessages = 0;
+  Timer? _ridePoll;
+  String? lastPromptedRideId;
+  Map<String, dynamic>? pendingRideRequest;
+  void Function(Map<String, dynamic> request)? onRideRequest;
 
   AppState() {
     _restore();
@@ -97,6 +102,49 @@ class AppState extends ChangeNotifier {
     await DriverApi.setOnline(value);
     online = value;
     notifyListeners();
+    if (value) {
+      startRidePolling();
+    } else {
+      stopRidePolling();
+    }
+  }
+
+  void startRidePolling() {
+    _ridePoll?.cancel();
+    _ridePoll = Timer.periodic(const Duration(seconds: 8), (_) => _pollRides());
+    _pollRides();
+  }
+
+  void stopRidePolling() {
+    _ridePoll?.cancel();
+    _ridePoll = null;
+  }
+
+  Future<void> _pollRides() async {
+    if (!online || !authenticated) return;
+    try {
+      final result = await DriverApi.requests();
+      if (result['restricted'] == true) return;
+      final raw = result['requests'] ?? result['data'] ?? [];
+      final list = raw is List ? raw : <dynamic>[];
+      if (list.isEmpty) return;
+      final mapped = list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      mapped.sort((a, b) {
+        final da = double.tryParse('${a['estimated_distance_km'] ?? a['estimatedDistanceKm'] ?? 999}') ?? 999;
+        final db = double.tryParse('${b['estimated_distance_km'] ?? b['estimatedDistanceKm'] ?? 999}') ?? 999;
+        if (da != db) return da.compareTo(db);
+        final fa = double.tryParse('${a['estimated_fare'] ?? a['fare'] ?? 0}') ?? 0;
+        final fb = double.tryParse('${b['estimated_fare'] ?? b['fare'] ?? 0}') ?? 0;
+        return fb.compareTo(fa);
+      });
+      final next = mapped.first;
+      final id = '${next['id'] ?? ''}';
+      if (id.isEmpty || id == lastPromptedRideId) return;
+      lastPromptedRideId = id;
+      pendingRideRequest = next;
+      notifyListeners();
+      onRideRequest?.call(next);
+    } catch (_) {}
   }
 
 
@@ -142,6 +190,14 @@ class AppState extends ChangeNotifier {
   void setOnline(bool value) {
     online = value;
     notifyListeners();
+    if (value) {
+      startRidePolling();
+      // fire-and-forget remote sync
+      DriverApi.setOnline(true).catchError((_) {});
+    } else {
+      stopRidePolling();
+      DriverApi.setOnline(false).catchError((_) {});
+    }
   }
 
   void setNav(int index) {

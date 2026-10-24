@@ -23,11 +23,27 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final state = AppScope.of(context);
+      state.onRideRequest = (req) {
+        if (!mounted || _prompting) return;
+        _promptSpecificRequest(req);
+      };
+      if (state.online) state.startRidePolling();
+    });
     _requestTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       if (!mounted) return;
       final state = AppScope.of(context);
       if (state.online && !_prompting) _showRideRequest();
     });
+  }
+
+  Future<void> _promptSpecificRequest(Map<String, dynamic> request) async {
+    if (_prompting || !mounted) return;
+    // reuse bottom sheet path by temporarily injecting into flow
+    _lastPromptedRequestId = '${request['id'] ?? ''}';
+    await _showRideRequest();
   }
 
   @override
@@ -50,7 +66,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 padding: EdgeInsets.fromLTRB(isNarrow ? 12 : 18, 12, isNarrow ? 12 : 18, 10),
                 child: Row(
                   children: [
-                    const CircleAvatar(radius: 23, child: Icon(Icons.person)),
+                    Builder(builder: (ctx) {
+                      final photo = (state.profile?['photo_url'] ?? state.profile?['photoUrl'] ?? '').toString();
+                      return CircleAvatar(
+                        radius: 23,
+                        backgroundImage: photo.startsWith('http') ? NetworkImage(photo) : null,
+                        child: photo.startsWith('http') ? null : const Icon(Icons.person),
+                      );
+                    }),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Column(
@@ -64,9 +87,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             overflow: TextOverflow.ellipsis,
                           ),
                           Text(
-                            state.online
-                                ? state.t('You are available for rides', 'Uko tayari kwa safari')
-                                : state.t('Go online to receive rides', 'Nenda mtandaoni kupokea safari'),
+                            () {
+                              final r = state.profile?['rating'] ?? state.profile?['average_rating'];
+                              final ratingStr = r == null ? '' : ' · ★ ${r.toString()}';
+                              final base = state.online
+                                  ? state.t('You are available for rides', 'Uko tayari kwa safari')
+                                  : state.t('Go online to receive rides', 'Nenda mtandaoni kupokea safari');
+                              return '$base$ratingStr';
+                            }(),
                             style: TextStyle(
                               fontSize: 12,
                               color: state.online
@@ -241,9 +269,19 @@ class _HomeScreenState extends State<HomeScreen> {
       final raw = result['requests'] ?? result['data'] ?? [];
       final list = raw is List ? raw : <dynamic>[];
       if(list.isEmpty) return;
-      final next = list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).firstWhere(
+      final mapped = list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      // Prefer nearer / higher-fare requests
+      mapped.sort((a, b) {
+        final da = double.tryParse('${a['estimated_distance_km'] ?? a['estimatedDistanceKm'] ?? 999}') ?? 999;
+        final db = double.tryParse('${b['estimated_distance_km'] ?? b['estimatedDistanceKm'] ?? 999}') ?? 999;
+        if (da != db) return da.compareTo(db);
+        final fa = double.tryParse('${a['estimated_fare'] ?? a['fare'] ?? 0}') ?? 0;
+        final fb = double.tryParse('${b['estimated_fare'] ?? b['fare'] ?? 0}') ?? 0;
+        return fb.compareTo(fa);
+      });
+      final next = mapped.firstWhere(
         (r) => '${r['id'] ?? ''}' != (_lastPromptedRequestId ?? ''),
-        orElse: () => <String, dynamic>{},
+        orElse: () => mapped.isNotEmpty ? mapped.first : <String, dynamic>{},
       );
       if (next.isEmpty) return;
       request = next;
@@ -343,15 +381,34 @@ class _HomeScreenState extends State<HomeScreen> {
                           label: state.t('Accept', 'Kubali'),
                           icon: Icons.check,
                           onPressed: () async {
+                            final rideId = request['id'].toString();
                             try {
-                              final rideId = request['id'].toString();
                               await DriverApi.accept(rideId);
                               AppScope.of(context).setActiveRideId(rideId);
                               if (sheetContext.mounted) Navigator.pop(sheetContext);
-                              if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => ActiveRideScreen(rideId: rideId)));
-                            } catch(e) {
-                              if(sheetContext.mounted) Navigator.pop(sheetContext);
-                              if(mounted) toast(context,e.toString().replaceFirst('Exception: ',''));
+                              if (mounted) {
+                                Navigator.push(context, MaterialPageRoute(builder: (_) => ActiveRideScreen(rideId: rideId)));
+                              }
+                            } catch (e) {
+                              final msg = e.toString().replaceFirst('Exception: ', '');
+                              // Backend may have accepted even if payload parsing failed
+                              final soft = msg.toLowerCase().contains('not found') == false &&
+                                  (msg.toLowerCase().contains('accepted') || msg.isEmpty);
+                              if (soft) {
+                                AppScope.of(context).setActiveRideId(rideId);
+                                if (sheetContext.mounted) Navigator.pop(sheetContext);
+                                if (mounted) {
+                                  Navigator.push(context, MaterialPageRoute(builder: (_) => ActiveRideScreen(rideId: rideId)));
+                                }
+                                return;
+                              }
+                              if (sheetContext.mounted) {
+                                ScaffoldMessenger.of(sheetContext).showSnackBar(
+                                  SnackBar(content: Text(msg), backgroundColor: Colors.red.shade700, duration: const Duration(seconds: 5)),
+                                );
+                              } else if (mounted) {
+                                toast(context, msg);
+                              }
                             }
                           },
                         ),

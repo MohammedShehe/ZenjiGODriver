@@ -121,9 +121,42 @@ class _EarningsScreenState extends State<EarningsScreen> {
             }, child: const Text('Settle now')),
             FilledButton.tonal(onPressed: loading ? null : () async {
               try {
-                await DriverApi.autopay(enabled: !autopay);
+                if (autopay) {
+                  await DriverApi.autopay(enabled: false);
+                  await _load();
+                  if (context.mounted) toast(context, 'Autopay disabled');
+                  return;
+                }
+                final phoneCtrl = TextEditingController(text: (AppScope.of(context).profile?['phone'] ?? '').toString());
+                final phone = await showDialog<String>(
+                  context: context,
+                  builder: (d) => AlertDialog(
+                    title: const Text('Enable autopay'),
+                    content: Column(mainAxisSize: MainAxisSize.min, children: [
+                      const Text('Enter the mobile-money number that will authorize commission settlements. A provider mandate/token is created for this number.'),
+                      const SizedBox(height: 12),
+                      TextField(controller: phoneCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Mobile money phone', prefixIcon: Icon(Icons.phone_android))),
+                    ]),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(d), child: const Text('Cancel')),
+                      FilledButton(onPressed: () => Navigator.pop(d, phoneCtrl.text.trim()), child: const Text('Continue')),
+                    ],
+                  ),
+                );
+                if (phone == null || phone.isEmpty) return;
+                final method = await DriverApi.addPaymentMethod({
+                  'provider': 'momo',
+                  'methodType': 'momo',
+                  'providerToken': 'momo:$phone',
+                  'phone': phone,
+                  'accountLabel': 'Autopay $phone',
+                  'maskedAccount': phone.length > 4 ? '****${phone.substring(phone.length - 4)}' : phone,
+                  'isAutopayDefault': true,
+                });
+                final token = (method['provider_token'] ?? method['providerToken'] ?? 'momo:$phone').toString();
+                await DriverApi.autopay(enabled: true, provider: 'momo', providerToken: token);
                 await _load();
-                if (context.mounted) toast(context, 'Autopay setting updated by server.');
+                if (context.mounted) toast(context, 'Autopay enabled for $phone');
               } catch (e) { if (context.mounted) toast(context, e.toString().replaceFirst('Exception: ', '')); }
             }, child: Text(autopay ? 'Disable autopay' : 'Enable autopay')),
           ]),

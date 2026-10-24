@@ -58,6 +58,7 @@ class DriverApi {
     required int? modelYear,
     required String emailOtpCode,
     required Map<String, List<String>> files,
+    Map<String, String>? expirations,
   }) async {
     final uri = Uri.parse('${ApiClient.baseUrl}/driver/register');
     final req = http.MultipartRequest('POST', uri);
@@ -80,14 +81,30 @@ class DriverApi {
         req.files.add(await http.MultipartFile.fromPath(entry.key, path));
       }
     }
-    final streamed = await req.send().timeout(ApiClient.requestTimeout);
-    final res = streamed;
-    final body = await res.stream.bytesToString().timeout(ApiClient.requestTimeout);
-    final data = body.isEmpty ? <String, dynamic>{} : jsonDecode(body) as Map<String, dynamic>;
-    if (res.statusCode < 200 || res.statusCode >= 300 || data['success'] == false) {
-      throw Exception(data['message'] ?? 'Registration failed');
+    if (expirations != null) {
+      for (final e in expirations.entries) {
+        req.fields['expires_${e.key}'] = e.value;
+      }
     }
-    return Map<String, dynamic>.from(data['data'] ?? {});
+    final streamed = await req.send().timeout(const Duration(seconds: 120));
+    final res = streamed;
+    final body = await res.stream.bytesToString().timeout(const Duration(seconds: 30));
+    Map<String, dynamic> data = {};
+    try {
+      if (body.isNotEmpty) data = jsonDecode(body) as Map<String, dynamic>;
+    } catch (_) {
+      // Server may have completed even if body is truncated
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        return <String, dynamic>{'status': 'pending', 'applicationStatus': 'pending'};
+      }
+      throw Exception('Registration response was unreadable');
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300 || data['success'] == false) {
+      throw Exception(data['message'] ?? 'Registration failed (${res.statusCode})');
+    }
+    final payload = data['data'];
+    if (payload is Map) return Map<String, dynamic>.from(payload);
+    return <String, dynamic>{'status': 'pending', 'applicationStatus': 'pending', 'raw': payload};
   }
 
   /* -------------------- Profile -------------------- */
@@ -252,6 +269,69 @@ class DriverApi {
     return Map<String, dynamic>.from(d is Map ? d : {});
   }
 
+  
+  static Future<Map<String, dynamic>> applicationStatus(String driverId) async {
+    final d = await ApiClient.data('GET', '/driver/application-status/$driverId', auth: false);
+    return Map<String, dynamic>.from(d is Map ? d : {});
+  }
+
+  static Future<List<dynamic>> reviews() async {
+    final d = await ApiClient.data('GET', '/driver/reviews');
+    return List<dynamic>.from(d is List ? d : []);
+  }
+
+  static Future<List<dynamic>> changeRequests() async {
+    final d = await ApiClient.data('GET', '/driver/change-requests');
+    return List<dynamic>.from(d is List ? d : []);
+  }
+
+  static Future<Map<String, dynamic>> requestProfileChange({
+    required String field,
+    required String newValue,
+    String? reason,
+  }) async {
+    final d = await ApiClient.data('POST', '/driver/change-requests/profile', body: {
+      'field': field,
+      'newValue': newValue,
+      if (reason != null) 'reason': reason,
+    });
+    return Map<String, dynamic>.from(d is Map ? d : {});
+  }
+
+  static Future<Map<String, dynamic>> requestVehicleChange(Map<String, dynamic> body) async {
+    final d = await ApiClient.data('POST', '/driver/change-requests/vehicle', body: body);
+    return Map<String, dynamic>.from(d is Map ? d : {});
+  }
+
+  static Future<Map<String, dynamic>> updateProfilePhoto(String path) async {
+    final uri = Uri.parse('${ApiClient.baseUrl}/driver/profile-photo');
+    final req = http.MultipartRequest('POST', uri);
+    final token = await ApiClient.accessToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Access token required. Please log in again.');
+    }
+    req.headers['Authorization'] = 'Bearer $token';
+    req.headers['Accept'] = 'application/json';
+    req.files.add(await http.MultipartFile.fromPath('photo', path));
+    final streamed = await req.send().timeout(ApiClient.requestTimeout);
+    final body = await streamed.stream.bytesToString();
+    Map<String, dynamic> data = {};
+    try {
+      if (body.isNotEmpty) data = jsonDecode(body) as Map<String, dynamic>;
+    } catch (_) {}
+    if (streamed.statusCode == 401) {
+      throw Exception(data['message'] ?? 'Access token required. Please log in again.');
+    }
+    if (streamed.statusCode < 200 || streamed.statusCode >= 300 || data['success'] == false) {
+      throw Exception(data['message'] ?? 'Photo upload failed (${streamed.statusCode})');
+    }
+    return Map<String, dynamic>.from(data['data'] ?? {});
+  }
+
+  static Future<void> removeProfilePhoto() async {
+    await ApiClient.data('DELETE', '/driver/profile-photo');
+  }
+
   /* -------------------- Notifications -------------------- */
   static Future<void> registerFcmToken(String token, {String platform = 'android'}) async {
     await ApiClient.data('POST', '/driver/notifications/token', body: {
@@ -263,5 +343,30 @@ class DriverApi {
   static Future<List<dynamic>> notifications() async {
     final d = await ApiClient.data('GET', '/driver/notifications');
     return List<dynamic>.from(d is List ? d : []);
+  }
+
+
+  static Future<List<Map<String, dynamic>>> placesAutocomplete(String input) async {
+    if (input.trim().length < 2) return [];
+    final d = await ApiClient.data('GET', '/driver/places/autocomplete?input=${Uri.encodeQueryComponent(input)}', auth: false);
+    final preds = (d is Map ? (d['predictions'] ?? []) : []) as List;
+    return preds.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  static Future<Map<String, dynamic>> placeDetails(String placeId) async {
+    final d = await ApiClient.data('GET', '/driver/places/details?placeId=${Uri.encodeQueryComponent(placeId)}', auth: false);
+    return Map<String, dynamic>.from(d is Map ? d : {});
+  }
+
+  /// Exchange driverId + email for access/refresh tokens (post-registration / post-approval).
+  static Future<Map<String, dynamic>> bootstrapSession({
+    required String driverId,
+    required String email,
+  }) async {
+    final d = await ApiClient.data('POST', '/driver/bootstrap-session', body: {
+      'driverId': driverId,
+      'email': email,
+    }, auth: false);
+    return Map<String, dynamic>.from(d is Map ? d : {});
   }
 }
