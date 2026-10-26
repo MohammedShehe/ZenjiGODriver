@@ -159,7 +159,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     LiveDriverMap(
                       height: MediaQuery.sizeOf(context).height < 700 ? 240 : 360,
-                      showRequests: state.online,
+                      showRequests: state.online && state.activeRideId == null,
+                      activeRideId: state.activeRideId,
                       shareLocation: state.online,
                       isSwahili: state.isSwahili,
                       isDark: Theme.of(context).brightness == Brightness.dark,

@@ -76,9 +76,7 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
         oldWidget.shareLocation != widget.shareLocation) {
       _refreshRemote();
     }
-    if (oldWidget.isDark != widget.isDark && _controller != null) {
-      _controller!.setMapStyle(widget.isDark ? MapStyles.dark : MapStyles.light);
-    }
+    // Map style is applied via the `style` parameter on GoogleMap; rebuild handles theme changes.
   }
 
   Future<void> _loadMarkers() async {
@@ -148,15 +146,23 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
   Future<void> _refreshRemote() async {
     try {
       if (widget.activeRideId != null) {
-        final result = await DriverApi.history(limit: 100);
-        final rideId = widget.activeRideId;
+        final rideId = widget.activeRideId!;
         Map<String, dynamic>? found;
-        for (final item in result) {
-          if (item is Map) {
-            final candidate = Map<String, dynamic>.from(item);
-            if ('${candidate['id'] ?? candidate['rideId'] ?? candidate['ride_id']}' == rideId) {
-              found = candidate;
-              break;
+        try {
+          // Prefer the dedicated ride endpoint (full coordinates + status).
+          final detail = await DriverApi.ride(rideId);
+          if (detail.isNotEmpty) found = detail;
+        } catch (_) {}
+        if (found == null) {
+          // Fallback: scan recent history for a matching id.
+          final result = await DriverApi.history(limit: 100);
+          for (final item in result) {
+            if (item is Map) {
+              final candidate = Map<String, dynamic>.from(item);
+              if ('${candidate['id'] ?? candidate['rideId'] ?? candidate['ride_id']}' == rideId) {
+                found = candidate;
+                break;
+              }
             }
           }
         }
@@ -291,7 +297,7 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
         rotation: pos.heading.isFinite ? pos.heading : 0,
         flat: true,
         anchor: const Offset(0.5, 0.5),
-        zIndex: 10,
+        zIndexInt: 10,
       ));
     }
 
@@ -414,14 +420,10 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
           fit: StackFit.expand,
           children: [
             gmaps.GoogleMap(
+              style: MapStyles.forBrightness(widget.isDark),
               initialCameraPosition: gmaps.CameraPosition(target: _center, zoom: 14.2),
               onMapCreated: (controller) async {
                 _controller = controller;
-                try {
-                  await controller.setMapStyle(
-                    widget.isDark ? MapStyles.dark : MapStyles.light,
-                  );
-                } catch (_) {}
                 await _fitBounds();
               },
               markers: _mapMarkers,

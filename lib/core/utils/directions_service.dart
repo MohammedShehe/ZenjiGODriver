@@ -143,8 +143,12 @@ class DirectionsService {
 
   // ---------------------------------------------------------------- Google Routes API
 
+  /// App-identity headers so API keys restricted to the Android package are accepted.
+  /// (SHA-1 cert is optional; package name alone unblocks many restricted keys.)
   static Future<Map<String, String>> _identity() =>
-      _identityHeaders ??= Future.value(<String, String>{});
+      _identityHeaders ??= Future.value(<String, String>{
+        'X-Android-Package': 'online.zenjigo.driver',
+      });
 
   static Future<RouteResult?> _googleRoute(
     double oLat,

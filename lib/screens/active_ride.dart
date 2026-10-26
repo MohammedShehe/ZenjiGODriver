@@ -68,9 +68,9 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
 
   // ---- ride accessors --------------------------------------------------------------
   String get _status => '${_ride?['status'] ?? 'accepted'}'.toLowerCase();
-  bool get _reached => _truthy(_ride?['reached_destination']);
-  String get _payStatus => '${_ride?['payment_status'] ?? 'not_due'}';
-  String get _payMethod => '${_ride?['payment_method'] ?? 'cash'}'.toLowerCase();
+  bool get _reached => _truthy(_field('reached_destination', 'reachedDestination'));
+  String get _payStatus => '${_field('payment_status', 'paymentStatus') ?? 'not_due'}';
+  String get _payMethod => '${_field('payment_method', 'paymentMethod') ?? 'cash'}'.toLowerCase();
   bool get _toPickup => const ['accepted', 'arriving', 'arrived'].contains(_status);
   bool get _inTrip => _status == 'started';
   bool get _awaitingPayment => _inTrip && _reached;
@@ -81,24 +81,50 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
     return double.tryParse('${v ?? ''}');
   }
 
+  /// Read a field that may arrive as snake_case or camelCase from the API.
+  dynamic _field(String snake, [String? camel]) {
+    final r = _ride;
+    if (r == null) return null;
+    final c = camel ?? _snakeToCamel(snake);
+    return r[snake] ?? r[c];
+  }
+
+  static String _snakeToCamel(String s) {
+    final parts = s.split('_');
+    if (parts.length < 2) return s;
+    final b = StringBuffer(parts.first);
+    for (var i = 1; i < parts.length; i++) {
+      final p = parts[i];
+      if (p.isEmpty) continue;
+      b.write(p[0].toUpperCase());
+      if (p.length > 1) b.write(p.substring(1));
+    }
+    return b.toString();
+  }
+
   gmaps.LatLng? get _pickup {
-    final la = _num(_ride?['pickup_lat']), ln = _num(_ride?['pickup_lng']);
+    final la = _num(_field('pickup_lat', 'pickupLat'));
+    final ln = _num(_field('pickup_lng', 'pickupLng'));
     return (la == null || ln == null) ? null : gmaps.LatLng(la, ln);
   }
 
   gmaps.LatLng? get _dest {
-    final la = _num(_ride?['destination_lat']), ln = _num(_ride?['destination_lng']);
+    final la = _num(_field('destination_lat', 'destinationLat'));
+    final ln = _num(_field('destination_lng', 'destinationLng'));
     return (la == null || ln == null) ? null : gmaps.LatLng(la, ln);
   }
 
   gmaps.LatLng? get _target => _toPickup ? _pickup : _dest;
 
   String _s(String key, [String fallback = '—']) {
-    final v = _ride?[key];
+    final v = _field(key) ?? _ride?[key];
     return (v == null || '$v'.trim().isEmpty) ? fallback : '$v';
   }
 
-  double get _amountDue => _num(_ride?['amount_due']) ?? _num(_ride?['estimated_fare']) ?? 0;
+  double get _amountDue =>
+      _num(_field('amount_due', 'amountDue')) ??
+      _num(_field('estimated_fare', 'estimatedFare')) ??
+      0;
   String _tzs(num v) {
     final n = v.round().toString();
     final b = StringBuffer();
@@ -207,11 +233,16 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
       if (!mounted) return;
       final prevStatus = _status;
       final prevReached = _reached;
+      final hadRoute = _leg != null;
       setState(() => _ride = r);
       if (prevStatus != _status) {
         _routeKey = '';
         _leg = null;
         _follow = true;
+        _ensureRoute();
+        _fitOverview();
+      } else if (!hadRoute && _target != null) {
+        // First successful parse of coordinates (handles camelCase/snake_case) → build route.
         _ensureRoute();
         _fitOverview();
       }
