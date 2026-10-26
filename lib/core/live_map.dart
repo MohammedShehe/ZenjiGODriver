@@ -1,17 +1,21 @@
 import 'dart:async';
-import 'dart:ui' as ui;
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
 import 'package:geolocator/geolocator.dart';
-import 'api/driver_api.dart';
-import 'friendly_errors.dart';
+import 'package:zenjigodriver/core/api/driver_api.dart';
+import 'package:zenjigodriver/core/friendly_errors.dart';
+import 'package:zenjigodriver/core/map/map_markers.dart';
+import 'package:zenjigodriver/core/map/map_style.dart';
+import 'package:zenjigodriver/core/map/map_widgets.dart';
+import 'package:zenjigodriver/core/map/route_utils.dart';
+import 'package:zenjigodriver/core/utils/directions_service.dart';
 
-/// Modern, professional live map for drivers:
-/// - Custom map style (light/dark)
-/// - Driver / pickup / destination / nearby rider markers
-/// - Route polyline between pickup → destination (and driver → target)
-/// - Continuous GPS while [shareLocation] is true
+/// Professional live map for drivers — same road-following quality as the rider app.
+///
+/// - Google Routes API → OSRM fallback (never a silent straight line when roads exist)
+/// - Dual glow + solid polylines along real roads
+/// - Custom canvas markers (driver / pickup / drop-off / nearby riders)
+/// - Styled dark / light map
 class LiveDriverMap extends StatefulWidget {
   const LiveDriverMap({
     super.key,
@@ -35,7 +39,7 @@ class LiveDriverMap extends StatefulWidget {
 }
 
 class _LiveDriverMapState extends State<LiveDriverMap> {
-  GoogleMapController? _controller;
+  gmaps.GoogleMapController? _controller;
   Position? _position;
   List<dynamic> _requests = [];
   Map<String, dynamic>? _ride;
@@ -43,20 +47,21 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
   Timer? _pollTimer;
   String? _mapError;
   bool _locationPermission = false;
-  BitmapDescriptor? _driverIcon;
-  BitmapDescriptor? _pickupIcon;
-  BitmapDescriptor? _destIcon;
-  BitmapDescriptor? _riderIcon;
-  Set<Polyline> _polylines = {};
 
-  static const LatLng _defaultCenter = LatLng(-6.1659, 39.2026);
+  List<gmaps.LatLng> _routePoints = [];
+  RouteResult? _routeMeta;
+  List<gmaps.LatLng> _toPickupPoints = [];
+  MapMarkerSet? _markers;
+  bool _routeLoading = false;
+
+  static const gmaps.LatLng _defaultCenter = gmaps.LatLng(-6.1659, 39.2026);
 
   String t(String en, String sw) => widget.isSwahili ? sw : en;
 
   @override
   void initState() {
     super.initState();
-    _buildMarkerIcons();
+    _loadMarkers();
     _initLocation();
     _refreshRemote();
     _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) => _refreshRemote());
@@ -68,37 +73,20 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.activeRideId != widget.activeRideId ||
         oldWidget.showRequests != widget.showRequests ||
-        oldWidget.shareLocation != widget.shareLocation ||
-        oldWidget.isDark != widget.isDark) {
+        oldWidget.shareLocation != widget.shareLocation) {
       _refreshRemote();
-      if (oldWidget.isDark != widget.isDark && _controller != null) {
-        _controller!.setMapStyle(widget.isDark ? _darkMapStyle : _lightMapStyle);
-      }
+    }
+    if (oldWidget.isDark != widget.isDark && _controller != null) {
+      _controller!.setMapStyle(widget.isDark ? MapStyles.dark : MapStyles.light);
     }
   }
 
-  Future<void> _buildMarkerIcons() async {
-    _driverIcon = await _circleMarker(const Color(0xFF0D9488), size: 56, ring: true);
-    _pickupIcon = await _circleMarker(const Color(0xFF22C55E), size: 48);
-    _destIcon = await _circleMarker(const Color(0xFFEF4444), size: 48);
-    _riderIcon = await _circleMarker(const Color(0xFFF59E0B), size: 44);
-    if (mounted) setState(() {});
-  }
-
-  Future<BitmapDescriptor> _circleMarker(Color color, {int size = 48, bool ring = false}) async {
-    final recorder = ui.PictureRecorder();
-    final canvas = Canvas(recorder);
-    final center = Offset(size / 2, size / 2);
-    if (ring) {
-      canvas.drawCircle(center, size / 2.2, Paint()..color = color.withOpacity(0.25));
-    }
-    canvas.drawCircle(center, size / 3.2, Paint()..color = Colors.white);
-    canvas.drawCircle(center, size / 3.8, Paint()..color = color);
-    final picture = recorder.endRecording();
-    final image = await picture.toImage(size, size);
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    return BitmapDescriptor.bytes(bytes!.buffer.asUint8List()); // ignore: deprecated_member_use_from_same_package
-    // Fallback path for older plugin versions is BitmapDescriptor.fromBytes
+  Future<void> _loadMarkers() async {
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) return;
+    final ratio = MediaQuery.devicePixelRatioOf(context);
+    final set = await MapMarkers.load(ratio);
+    if (mounted) setState(() => _markers = set);
   }
 
   Future<void> _initLocation() async {
@@ -140,7 +128,6 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
         _position = pos;
         _mapError = null;
       });
-      _rebuildPolylines();
       if (widget.shareLocation || widget.activeRideId != null) {
         try {
           await DriverApi.updateLocation(
@@ -150,6 +137,10 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
             speed: pos.speed.isFinite ? pos.speed : null,
           );
         } catch (_) {}
+        // Refresh driver→target road path when we move
+        if (widget.activeRideId != null) {
+          unawaited(_rebuildRoutes());
+        }
       }
     } catch (_) {}
   }
@@ -171,8 +162,7 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
         }
         if (mounted && found != null) {
           setState(() => _ride = found);
-          _rebuildPolylines();
-          _fitBounds();
+          await _rebuildRoutes();
         }
       } else if (widget.showRequests) {
         final result = await DriverApi.requests();
@@ -191,101 +181,117 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
     return double.tryParse(value?.toString() ?? '');
   }
 
-  void _rebuildPolylines() {
-    final points = <LatLng>[];
+  Future<void> _rebuildRoutes() async {
     final ride = _ride;
-    if (widget.activeRideId != null && ride != null) {
-      final pickupLat = _num(ride['pickupLat'] ?? ride['pickup_lat']);
-      final pickupLng = _num(ride['pickupLng'] ?? ride['pickup_lng']);
-      final destLat = _num(ride['destinationLat'] ?? ride['destination_lat']);
-      final destLng = _num(ride['destinationLng'] ?? ride['destination_lng']);
-      final pos = _position;
-      final status = '${ride['status'] ?? ''}'.toLowerCase();
-
-      // Driver → next target → remaining path
-      if (pos != null) points.add(LatLng(pos.latitude, pos.longitude));
-      if (pickupLat != null && pickupLng != null &&
-          (status.contains('accept') || status.contains('arriv') || status == 'assigned' || status == 'searching')) {
-        points.add(LatLng(pickupLat, pickupLng));
+    if (ride == null || widget.activeRideId == null) {
+      if (mounted) {
+        setState(() {
+          _routePoints = [];
+          _toPickupPoints = [];
+          _routeMeta = null;
+        });
       }
-      if (destLat != null && destLng != null) {
-        if (points.isEmpty && pickupLat != null && pickupLng != null) {
-          points.add(LatLng(pickupLat, pickupLng));
-        }
-        points.add(LatLng(destLat, destLng));
-      } else if (pickupLat != null && pickupLng != null && points.length < 2) {
-        points.add(LatLng(pickupLat, pickupLng));
-      }
+      return;
     }
+    if (_routeLoading) return;
+    _routeLoading = true;
 
-    _polylines = points.length >= 2
-        ? {
-            Polyline(
-              polylineId: const PolylineId('active-route'),
-              points: points,
-              color: const Color(0xFF0D9488),
-              width: 5,
-              jointType: JointType.round,
-              endCap: Cap.roundCap,
-              startCap: Cap.roundCap,
-              geodesic: true,
-            ),
-            // Soft underlay for depth
-            Polyline(
-              polylineId: const PolylineId('active-route-glow'),
-              points: points,
-              color: const Color(0x550D9488),
-              width: 10,
-              jointType: JointType.round,
-              geodesic: true,
-              zIndex: -1,
-            ),
+    final pickupLat = _num(ride['pickupLat'] ?? ride['pickup_lat']);
+    final pickupLng = _num(ride['pickupLng'] ?? ride['pickup_lng']);
+    final destLat = _num(ride['destinationLat'] ?? ride['destination_lat']);
+    final destLng = _num(ride['destinationLng'] ?? ride['destination_lng']);
+    final status = '${ride['status'] ?? ''}'.toLowerCase();
+    final pos = _position;
+
+    try {
+      // Full trip corridor: pickup → destination (road-following)
+      if (pickupLat != null && pickupLng != null && destLat != null && destLng != null) {
+        final trip = await DirectionsService.fetch(
+          originLat: pickupLat,
+          originLng: pickupLng,
+          destLat: destLat,
+          destLng: destLng,
+        );
+        if (mounted) {
+          setState(() {
+            _routePoints = GeoUtils.simplify(trip.points);
+            _routeMeta = trip;
+          });
+        }
+      }
+
+      // Driver → next target (pickup while arriving, else destination)
+      if (pos != null) {
+        final goingToPickup = status.contains('accept') ||
+            status.contains('arriv') ||
+            status == 'assigned' ||
+            status == 'searching';
+        final tLat = goingToPickup ? pickupLat : destLat;
+        final tLng = goingToPickup ? pickupLng : destLng;
+        if (tLat != null && tLng != null) {
+          final leg = await DirectionsService.route(
+            originLat: pos.latitude,
+            originLng: pos.longitude,
+            destLat: tLat,
+            destLng: tLng,
+          );
+          if (mounted) {
+            setState(() => _toPickupPoints = GeoUtils.simplify(leg));
           }
-        : {};
+        }
+      }
+      await _fitBounds();
+    } finally {
+      _routeLoading = false;
+    }
   }
 
   Future<void> _fitBounds() async {
     final c = _controller;
     if (c == null) return;
-    final pts = <LatLng>[];
-    for (final p in _polylines) {
-      pts.addAll(p.points);
-    }
-    for (final m in _markers) {
-      pts.add(m.position);
-    }
-    if (pts.isEmpty) return;
-    if (pts.length == 1) {
-      await c.animateCamera(CameraUpdate.newLatLngZoom(pts.first, 15));
-      return;
-    }
-    double minLat = pts.first.latitude, maxLat = pts.first.latitude;
-    double minLng = pts.first.longitude, maxLng = pts.first.longitude;
-    for (final p in pts) {
-      if (p.latitude < minLat) minLat = p.latitude;
-      if (p.latitude > maxLat) maxLat = p.latitude;
-      if (p.longitude < minLng) minLng = p.longitude;
-      if (p.longitude > maxLng) maxLng = p.longitude;
-    }
+    final pts = <gmaps.LatLng>[
+      ..._routePoints,
+      ..._toPickupPoints,
+      ..._markerPositions,
+    ];
+    final bounds = GeoUtils.boundsOf(pts);
+    if (bounds == null) return;
     try {
-      await c.animateCamera(CameraUpdate.newLatLngBounds(
-        LatLngBounds(southwest: LatLng(minLat, minLng), northeast: LatLng(maxLat, maxLng)),
-        56,
-      ));
+      await c.animateCamera(gmaps.CameraUpdate.newLatLngBounds(bounds, 56));
     } catch (_) {}
   }
 
-  Set<Marker> get _markers {
-    final markers = <Marker>{};
+  List<gmaps.LatLng> get _markerPositions {
+    final out = <gmaps.LatLng>[];
+    final pos = _position;
+    if (pos != null) out.add(gmaps.LatLng(pos.latitude, pos.longitude));
+    final ride = _ride;
+    if (ride != null) {
+      final plat = _num(ride['pickupLat'] ?? ride['pickup_lat']);
+      final plng = _num(ride['pickupLng'] ?? ride['pickup_lng']);
+      final dlat = _num(ride['destinationLat'] ?? ride['destination_lat']);
+      final dlng = _num(ride['destinationLng'] ?? ride['destination_lng']);
+      if (plat != null && plng != null) out.add(gmaps.LatLng(plat, plng));
+      if (dlat != null && dlng != null) out.add(gmaps.LatLng(dlat, dlng));
+    }
+    return out;
+  }
+
+  Set<gmaps.Marker> get _mapMarkers {
+    final markers = <gmaps.Marker>{};
+    final icons = _markers;
     final pos = _position;
     if (pos != null) {
-      markers.add(Marker(
-        markerId: const MarkerId('driver-current-location'),
-        position: LatLng(pos.latitude, pos.longitude),
-        infoWindow: InfoWindow(title: t('You', 'Wewe')),
-        icon: _driverIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-        zIndex: 10,
+      markers.add(gmaps.Marker(
+        markerId: const gmaps.MarkerId('driver'),
+        position: gmaps.LatLng(pos.latitude, pos.longitude),
+        infoWindow: gmaps.InfoWindow(title: t('You', 'Wewe')),
+        icon: icons?.driverArrow ??
+            gmaps.BitmapDescriptor.defaultMarkerWithHue(gmaps.BitmapDescriptor.hueAzure),
+        rotation: pos.heading.isFinite ? pos.heading : 0,
+        flat: true,
         anchor: const Offset(0.5, 0.5),
+        zIndex: 10,
       ));
     }
 
@@ -296,27 +302,29 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
       final destLat = _num(ride['destinationLat'] ?? ride['destination_lat']);
       final destLng = _num(ride['destinationLng'] ?? ride['destination_lng']);
       if (pickupLat != null && pickupLng != null) {
-        markers.add(Marker(
-          markerId: const MarkerId('ride-pickup'),
-          position: LatLng(pickupLat, pickupLng),
-          infoWindow: InfoWindow(
+        markers.add(gmaps.Marker(
+          markerId: const gmaps.MarkerId('pickup'),
+          position: gmaps.LatLng(pickupLat, pickupLng),
+          infoWindow: gmaps.InfoWindow(
             title: t('Pickup', 'Kuchukua'),
             snippet: '${ride['pickupAddress'] ?? ride['pickup_address'] ?? ''}',
           ),
-          icon: _pickupIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-          anchor: const Offset(0.5, 0.5),
+          icon: icons?.pickup ??
+              gmaps.BitmapDescriptor.defaultMarkerWithHue(gmaps.BitmapDescriptor.hueGreen),
+          anchor: const Offset(0.5, 0.92),
         ));
       }
       if (destLat != null && destLng != null) {
-        markers.add(Marker(
-          markerId: const MarkerId('ride-destination'),
-          position: LatLng(destLat, destLng),
-          infoWindow: InfoWindow(
+        markers.add(gmaps.Marker(
+          markerId: const gmaps.MarkerId('destination'),
+          position: gmaps.LatLng(destLat, destLng),
+          infoWindow: gmaps.InfoWindow(
             title: t('Destination', 'Kwenda'),
             snippet: '${ride['destinationAddress'] ?? ride['destination_address'] ?? ''}',
           ),
-          icon: _destIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-          anchor: const Offset(0.5, 0.5),
+          icon: icons?.destination ??
+              gmaps.BitmapDescriptor.defaultMarkerWithHue(gmaps.BitmapDescriptor.hueOrange),
+          anchor: const Offset(0.5, 0.92),
         ));
       }
     } else {
@@ -328,30 +336,55 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
         final lng = _num(r['pickupLng'] ?? r['pickup_lng']);
         if (lat == null || lng == null) continue;
         final id = '${r['id'] ?? i}';
-        markers.add(Marker(
-          markerId: MarkerId('request-$id'),
-          position: LatLng(lat, lng),
-          infoWindow: InfoWindow(
+        final type = '${r['rideType'] ?? r['ride_type'] ?? 'taxi'}';
+        markers.add(gmaps.Marker(
+          markerId: gmaps.MarkerId('request-$id'),
+          position: gmaps.LatLng(lat, lng),
+          infoWindow: gmaps.InfoWindow(
             title: t('Rider pickup', 'Abiria — kuchukua'),
             snippet:
-                '${r['pickupAddress'] ?? r['pickup_address'] ?? ''} · ${r['rideType'] ?? r['ride_type'] ?? ''}',
+                '${r['pickupAddress'] ?? r['pickup_address'] ?? ''} · $type',
           ),
-          icon: _riderIcon ?? BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
-          anchor: const Offset(0.5, 0.5),
+          icon: icons?.nearbyFor(type) ??
+              gmaps.BitmapDescriptor.defaultMarkerWithHue(gmaps.BitmapDescriptor.hueOrange),
+          anchor: const Offset(0.5, 0.92),
         ));
       }
     }
     return markers;
   }
 
-  LatLng get _center {
+  Set<gmaps.Polyline> get _polylines {
+    final set = <gmaps.Polyline>{};
+    final isDark = widget.isDark;
+
+    if (_routePoints.length >= 2) {
+      set.addAll(MapUi.routeLine(
+        id: 'trip',
+        points: _routePoints,
+        isDark: isDark,
+      ));
+    }
+    if (_toPickupPoints.length >= 2) {
+      // Active navigation leg — slightly brighter dashed overlay feel via second solid
+      set.addAll(MapUi.routeLine(
+        id: 'leg',
+        points: _toPickupPoints,
+        isDark: isDark,
+        width: 5,
+      ));
+    }
+    return set;
+  }
+
+  gmaps.LatLng get _center {
     final pos = _position;
-    if (pos != null) return LatLng(pos.latitude, pos.longitude);
+    if (pos != null) return gmaps.LatLng(pos.latitude, pos.longitude);
     final ride = _ride;
     if (ride != null) {
       final lat = _num(ride['pickupLat'] ?? ride['pickup_lat']);
       final lng = _num(ride['pickupLng'] ?? ride['pickup_lng']);
-      if (lat != null && lng != null) return LatLng(lat, lng);
+      if (lat != null && lng != null) return gmaps.LatLng(lat, lng);
     }
     return _defaultCenter;
   }
@@ -370,6 +403,7 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
     final mapHeight = widget.height.isFinite
         ? widget.height
         : (MediaQuery.sizeOf(context).height * 0.42).clamp(220.0, 480.0);
+    final meta = _routeMeta;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
@@ -379,14 +413,18 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            GoogleMap(
-              initialCameraPosition: CameraPosition(target: _center, zoom: 14.2),
+            gmaps.GoogleMap(
+              initialCameraPosition: gmaps.CameraPosition(target: _center, zoom: 14.2),
               onMapCreated: (controller) async {
                 _controller = controller;
-                await controller.setMapStyle(widget.isDark ? _darkMapStyle : _lightMapStyle);
-                _fitBounds();
+                try {
+                  await controller.setMapStyle(
+                    widget.isDark ? MapStyles.dark : MapStyles.light,
+                  );
+                } catch (_) {}
+                await _fitBounds();
               },
-              markers: _markers,
+              markers: _mapMarkers,
               polylines: _polylines,
               myLocationEnabled: false,
               myLocationButtonEnabled: false,
@@ -395,30 +433,9 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
               mapToolbarEnabled: false,
               trafficEnabled: false,
               buildingsEnabled: true,
-              liteModeEnabled: false,
               padding: EdgeInsets.only(bottom: 8 + bottomPad * 0.1, top: 8),
             ),
-            // Top gradient + legend
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              child: IgnorePointer(
-                child: Container(
-                  height: 56,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        (widget.isDark ? Colors.black : Colors.white).withOpacity(0.35),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+            // Legend
             Positioned(
               left: 12,
               top: 12,
@@ -429,35 +446,44 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
                 showRiders: widget.showRequests && widget.activeRideId == null,
               ),
             ),
+            // Route chip (distance / ETA) when we have a road path
+            if (meta != null && meta.followsRoads)
+              Positioned(
+                left: 12,
+                right: 64,
+                bottom: 12,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: RouteInfoChip(
+                    duration: meta.durationLabel,
+                    distance: meta.distanceLabel,
+                    isDark: widget.isDark,
+                    approximate: false,
+                  ),
+                ),
+              ),
+            // Recenter
             Positioned(
               right: 12,
               bottom: 12,
-              child: Material(
-                color: widget.isDark ? const Color(0xEE1E293B) : Colors.white,
-                elevation: 3,
-                borderRadius: BorderRadius.circular(14),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () async {
-                    await _updateLocation();
-                    final pos = _position;
-                    if (pos != null && _controller != null) {
-                      await _controller!.animateCamera(
-                        CameraUpdate.newLatLngZoom(LatLng(pos.latitude, pos.longitude), 15.5),
-                      );
-                    } else {
-                      await _fitBounds();
-                    }
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Icon(
-                      Icons.my_location_rounded,
-                      color: const Color(0xFF0D9488),
-                      size: 22,
-                    ),
-                  ),
-                ),
+              child: MapCircleButton(
+                icon: Icons.my_location_rounded,
+                isDark: widget.isDark,
+                tooltip: t('My location', 'Eneo langu'),
+                onTap: () async {
+                  await _updateLocation();
+                  final pos = _position;
+                  if (pos != null && _controller != null) {
+                    await _controller!.animateCamera(
+                      gmaps.CameraUpdate.newLatLngZoom(
+                        gmaps.LatLng(pos.latitude, pos.longitude),
+                        15.5,
+                      ),
+                    );
+                  } else {
+                    await _fitBounds();
+                  }
+                },
               ),
             ),
             if (_mapError != null)
@@ -472,7 +498,11 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     child: Text(
                       _mapError!,
-                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -499,7 +529,7 @@ class _Legend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = isDark ? const Color(0xEE0F172A) : Colors.white.withOpacity(0.95);
+    final bg = MapUi.panelColor(isDark);
     final fg = isDark ? Colors.white70 : Colors.black87;
     String t(String en, String sw) => isSwahili ? sw : en;
     return Container(
@@ -508,7 +538,11 @@ class _Legend extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 8, offset: const Offset(0, 2)),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
       child: DefaultTextStyle(
@@ -522,7 +556,7 @@ class _Legend extends StatelessWidget {
               const SizedBox(height: 4),
               _dot(const Color(0xFF22C55E), t('Pickup', 'Kuchukua')),
               const SizedBox(height: 4),
-              _dot(const Color(0xFFEF4444), t('Drop-off', 'Kushusha')),
+              _dot(const Color(0xFFF97316), t('Drop-off', 'Kushusha')),
             ],
             if (showRiders) ...[
               const SizedBox(height: 4),
@@ -547,35 +581,3 @@ class _Legend extends StatelessWidget {
         ],
       );
 }
-
-/// Subtle modern dark map style (desaturated roads, teal water accents).
-const String _darkMapStyle = '''
-[
-  {"elementType":"geometry","stylers":[{"color":"#1d2c3d"}]},
-  {"elementType":"labels.text.fill","stylers":[{"color":"#8a9bb0"}]},
-  {"elementType":"labels.text.stroke","stylers":[{"color":"#1d2c3d"}]},
-  {"featureType":"administrative","elementType":"geometry","stylers":[{"visibility":"off"}]},
-  {"featureType":"poi","stylers":[{"visibility":"off"}]},
-  {"featureType":"road","elementType":"geometry","stylers":[{"color":"#304a63"}]},
-  {"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#1d2c3d"}]},
-  {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#3d5a73"}]},
-  {"featureType":"transit","stylers":[{"visibility":"off"}]},
-  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#0b4f5c"}]},
-  {"featureType":"water","elementType":"labels.text.fill","stylers":[{"color":"#4e6d70"}]}
-]
-''';
-
-const String _lightMapStyle = '''
-[
-  {"elementType":"geometry","stylers":[{"color":"#f5f7fa"}]},
-  {"elementType":"labels.text.fill","stylers":[{"color":"#5c6b7a"}]},
-  {"elementType":"labels.text.stroke","stylers":[{"color":"#ffffff"}]},
-  {"featureType":"poi","stylers":[{"visibility":"off"}]},
-  {"featureType":"road","elementType":"geometry","stylers":[{"color":"#ffffff"}]},
-  {"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#d9e2ec"}]},
-  {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#dbe7f0"}]},
-  {"featureType":"transit","stylers":[{"visibility":"off"}]},
-  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#b7e4e8"}]},
-  {"featureType":"water","elementType":"labels.text.fill","stylers":[{"color":"#4e8a8f"}]}
-]
-''';

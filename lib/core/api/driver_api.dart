@@ -123,10 +123,11 @@ class DriverApi {
     await ApiClient.data('PATCH', '/driver/online', body: {'online': online});
   }
 
-  static Future<void> updateLocation(double lat, double lng, {double? heading, double? speed}) async {
+  static Future<void> updateLocation(double lat, double lng, {double? heading, double? speed, String? rideId}) async {
     await ApiClient.data('POST', '/driver/location', body: {
       'lat': lat,
       'lng': lng,
+      if (rideId != null) 'rideId': int.tryParse(rideId) ?? rideId,
       if (heading != null) 'heading': heading,
       if (speed != null) 'speed': speed,
     });
@@ -142,8 +143,31 @@ class DriverApi {
     await ApiClient.data('POST', '/driver/rides/$id/accept');
   }
 
-  static Future<void> status(String id, String status) async {
-    await ApiClient.data('PATCH', '/driver/rides/$id/status', body: {'status': status});
+  /// Changes the ride status. `otp` is the rider's 4-digit PIN and is required for `started`.
+  static Future<Map<String, dynamic>> status(String id, String status, {String? otp}) async {
+    final d = await ApiClient.data('PATCH', '/driver/rides/$id/status', body: {
+      'status': status,
+      if (otp != null && otp.isNotEmpty) 'otp': otp,
+    });
+    return Map<String, dynamic>.from(d is Map ? d : {});
+  }
+
+  /// Full live ride (rider name/phone, coordinates, payment state, earnings once completed).
+  static Future<Map<String, dynamic>> ride(String id) async {
+    final d = await ApiClient.data('GET', '/driver/rides/$id');
+    return Map<String, dynamic>.from(d is Map ? d : {});
+  }
+
+  /// Tells the rider the drop-off was reached; the rider then pays.
+  static Future<Map<String, dynamic>> reachedDestination(String id) async {
+    final d = await ApiClient.data('POST', '/driver/rides/$id/reached-destination');
+    return Map<String, dynamic>.from(d is Map ? d : {});
+  }
+
+  /// Driver confirms the rider handed over the cash. Ends the ride.
+  static Future<Map<String, dynamic>> collectCash(String id) async {
+    final d = await ApiClient.data('POST', '/driver/rides/$id/collect-cash');
+    return Map<String, dynamic>.from(d is Map ? d : {});
   }
 
   static Future<List<dynamic>> history({int limit = 50}) async {
@@ -188,13 +212,6 @@ class DriverApi {
 
   static Future<Map<String, dynamic>> settlementStatus(String id) async {
     final d = await ApiClient.data('GET', '/driver/settlements/$id');
-    return Map<String, dynamic>.from(d is Map ? d : {});
-  }
-
-  static Future<Map<String, dynamic>> markSettlementPaid(String id, String reference) async {
-    final d = await ApiClient.data('POST', '/driver/settlements/$id/mark-paid', body: {
-      'externalReference': reference,
-    });
     return Map<String, dynamic>.from(d is Map ? d : {});
   }
 
@@ -252,6 +269,17 @@ class DriverApi {
   static Future<List<dynamic>> messages(String conversationId) async {
     final d = await ApiClient.data('GET', '/driver/chat/$conversationId/messages');
     return List<dynamic>.from(d is List ? d : []);
+  }
+
+  /// Opens (or creates) the chat thread for a ride and returns its conversation id.
+  static Future<String> rideConversation(String rideId) async {
+    final d = await ApiClient.data('POST', '/driver/chat/ride/$rideId');
+    final m = Map<String, dynamic>.from(d is Map ? d : {});
+    return (m['conversationId'] ?? m['id'] ?? '').toString();
+  }
+
+  static Future<void> editMessage(String conversationId, String messageId, String text) async {
+    await ApiClient.data('PATCH', '/driver/chat/$conversationId/messages/$messageId', body: {'text': text});
   }
 
   static Future<void> markRead(String conversationId) async {

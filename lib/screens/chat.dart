@@ -18,13 +18,18 @@ class _ChatListScreenState extends State<ChatListScreen> {
   String? error;
   final search = TextEditingController();
 
+  Timer? _refresh;
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+    _refresh = Timer.periodic(const Duration(seconds: 8), (_) => _load(silent: true));
+  }
   @override
-  void dispose() { search.dispose(); super.dispose(); }
+  void dispose() { _refresh?.cancel(); search.dispose(); super.dispose(); }
 
-  Future<void> _load() async {
-    if (mounted) setState(() { loading = true; error = null; });
+  Future<void> _load({bool silent = false}) async {
+    if (mounted && !silent) setState(() { loading = true; error = null; });
     try {
       final list = await DriverApi.conversations();
       if (!mounted) return;
@@ -43,7 +48,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
         app.notifyListeners();
       }
     } catch (e) {
-      if (mounted) setState(() { error = FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili); loading = false; });
+      if (mounted && !silent) setState(() { error = FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili); loading = false; });
     }
   }
 
@@ -117,7 +122,8 @@ class ChatScreen extends StatefulWidget {
   final String name;
   final bool support;
   final String? conversationId;
-  const ChatScreen({super.key, required this.name, required this.support, this.conversationId});
+  final String? rideId;
+  const ChatScreen({super.key, required this.name, required this.support, this.conversationId, this.rideId});
   @override
   State<ChatScreen> createState() => _ChatScreenState();
 }
@@ -145,11 +151,14 @@ class _ChatScreenState extends State<ChatScreen> {
         final c = await DriverApi.openSupport();
         conversationId = (c['conversationId'] ?? c['id'])?.toString();
       }
+      if ((conversationId == null || conversationId!.isEmpty) && widget.rideId != null) {
+        conversationId = await DriverApi.rideConversation(widget.rideId!);
+      }
       if (conversationId == null || conversationId!.isEmpty) {
         throw Exception('This conversation has no server ID.');
       }
       await _loadMessages();
-      poller = Timer.periodic(const Duration(seconds: 8), (_) => _loadMessages(silent: true));
+      poller = Timer.periodic(const Duration(seconds: 3), (_) => _loadMessages(silent: true));
     } catch (e) {
       if (mounted) setState(() { error = FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili); loading = false; });
     }
@@ -162,14 +171,20 @@ class _ChatScreenState extends State<ChatScreen> {
       final rows = await DriverApi.messages(id);
       await DriverApi.markRead(id);
       if (!mounted) return;
+      final next = rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).where((m) => m['isDeleted'] != true).toList();
+      final grew = next.length > messages.length;
       setState(() {
-        messages = rows.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+        messages = next;
         loading = false;
         error = null;
       });
       // Conversation opened → server marked read → refresh nav badge
       AppScope.of(context).refreshUnreadMessages();
-      if (!silent && scroll.hasClients) scroll.jumpTo(scroll.position.maxScrollExtent);
+      if ((!silent || grew)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (scroll.hasClients) scroll.jumpTo(scroll.position.maxScrollExtent);
+        });
+      }
     } catch (e) {
       if (mounted) setState(() { if (!silent) error = FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili); loading = false; });
     }
@@ -192,10 +207,40 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() { poller?.cancel(); controller.dispose(); scroll.dispose(); super.dispose(); }
 
+  Future<void> _ownMessageMenu(Map<String, dynamic> m) async {
+    final id = conversationId;
+    if (id == null) return;
+    final action = await showModalBottomSheet<String>(context: context, builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      ListTile(leading: const Icon(Icons.edit), title: const Text('Edit message'), onTap: () => Navigator.pop(ctx, 'edit')),
+      ListTile(leading: const Icon(Icons.delete_outline), title: const Text('Delete message'), onTap: () => Navigator.pop(ctx, 'delete')),
+    ])));
+    if (action == null || !mounted) return;
+    try {
+      if (action == 'delete') {
+        await DriverApi.deleteMessage(id, '${m['id']}');
+      } else {
+        final ctrl = TextEditingController(text: '${m['text'] ?? ''}');
+        final value = await showDialog<String>(context: context, builder: (ctx) => AlertDialog(
+          title: const Text('Edit message'),
+          content: TextField(controller: ctrl, maxLines: 4, autofocus: true),
+          actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')), FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text.trim()), child: const Text('Save'))],
+        ));
+        if (value == null || value.isEmpty) return;
+        await DriverApi.editMessage(id, '${m['id']}', value);
+      }
+      await _loadMessages(silent: true);
+    } catch (e) {
+      if (mounted) toast(context, FriendlyErrors.message(e, swahili: AppScope.of(context).isSwahili));
+    }
+  }
+
   String _time(dynamic value) {
     if (value == null) return '';
-    final d = DateTime.tryParse(value.toString());
-    if (d == null) return value.toString();
+    final raw = value.toString();
+    var d = DateTime.tryParse(raw);
+    if (d == null) return raw;
+    if (!raw.endsWith('Z') && !raw.contains('+')) d = DateTime.tryParse('${raw.replaceFirst(' ', 'T')}Z') ?? d;
+    d = d.toLocal();
     return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
 
@@ -218,7 +263,7 @@ class _ChatScreenState extends State<ChatScreen> {
             final m = messages[index];
             final mine = m['isMine'] == true || m['mine'] == true;
             final body = (m['text'] ?? '').toString();
-            return Align(alignment: mine ? Alignment.centerRight : Alignment.centerLeft, child: Container(
+            return GestureDetector(onLongPress: mine ? () => _ownMessageMenu(m) : null, child: Align(alignment: mine ? Alignment.centerRight : Alignment.centerLeft, child: Container(
               constraints: const BoxConstraints(maxWidth: 330),
               margin: const EdgeInsets.symmetric(vertical: 4), padding: const EdgeInsets.fromLTRB(12, 9, 12, 7),
               decoration: BoxDecoration(color: mine ? ZenjiColors.green.withValues(alpha: .22) : Theme.of(context).colorScheme.surface,
@@ -226,9 +271,9 @@ class _ChatScreenState extends State<ChatScreen> {
                   bottomLeft: Radius.circular(mine ? 16 : 4), bottomRight: Radius.circular(mine ? 4 : 16))),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(body, style: const TextStyle(height: 1.35)),
-                const SizedBox(height: 3), Text(_time(m['createdAt'] ?? m['created_at']), style: TextStyle(fontSize: 9, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .55))),
+                const SizedBox(height: 3), Text('${m['isEdited'] == true ? 'edited · ' : ''}${_time(m['createdAt'] ?? m['created_at'])}', style: TextStyle(fontSize: 9, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: .55))),
               ]),
-            ));
+            )));
           })),
         SafeArea(top: false, child: Padding(padding: const EdgeInsets.fromLTRB(10, 7, 10, 10), child: Row(children: [
           Expanded(child: TextField(controller: controller, minLines: 1, maxLines: 4, textInputAction: TextInputAction.send,
