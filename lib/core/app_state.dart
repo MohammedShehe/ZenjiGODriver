@@ -124,6 +124,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> _pollRides() async {
     if (!online || !authenticated) return;
+    if (activeRideId != null) return; // busy with a ride: don't surface new requests
     try {
       final result = await DriverApi.requests();
       if (result['restricted'] == true) return;

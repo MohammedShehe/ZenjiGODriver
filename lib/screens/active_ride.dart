@@ -752,7 +752,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
                   zoomControlsEnabled: false,
                   mapToolbarEnabled: false,
                   compassEnabled: false,
-                  buildingsEnabled: true,
+                  buildingsEnabled: false,
                   rotateGesturesEnabled: true,
                   tiltGesturesEnabled: false,
                 );
@@ -761,11 +761,18 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
           ),
 
           // ------------------------------------------------------- top banner
-          SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-              child: _topBanner(isDark),
+          // Positioned (top/left/right) gives the banner a bounded width and an *unbounded*
+          // height, so it can only ever be as tall as its content and never covers the map.
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+                child: _topBanner(isDark),
+              ),
             ),
           ),
 
@@ -816,7 +823,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 16, offset: const Offset(0, 4))],
       ),
-      child: Row(children: [
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
         Container(
           width: 46,
           height: 46,
@@ -825,7 +832,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(
               _awaitingPayment
                   ? t('Waiting for payment', 'Inasubiri malipo')

@@ -42,6 +42,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _promptSpecificRequest(Map<String, dynamic> request) async {
     if (_prompting || !mounted) return;
+    if (AppScope.of(context).activeRideId != null) return;
     // reuse bottom sheet path by temporarily injecting into flow
     _lastPromptedRequestId = '${request['id'] ?? ''}';
     await _showRideRequest();
@@ -261,6 +262,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _showRideRequest() async {
     if (_prompting || !mounted || !AppScope.of(context).online) return;
+    // Never pop a new-request sheet over an ongoing ride (it would cover the navigation map).
+    if (AppScope.of(context).activeRideId != null) return;
     _prompting = true;
     final state = AppScope.of(context);
     Map<String,dynamic> request={};

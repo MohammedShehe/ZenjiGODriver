@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' as gmaps;
 import 'package:geolocator/geolocator.dart';
@@ -53,6 +55,8 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
   List<gmaps.LatLng> _toPickupPoints = [];
   MapMarkerSet? _markers;
   bool _routeLoading = false;
+  bool _didFitRoute = false; // fit the camera to the route once, then let the driver pan freely
+  bool _centeredOnDriver = false;
 
   static const gmaps.LatLng _defaultCenter = gmaps.LatLng(-6.1659, 39.2026);
 
@@ -71,6 +75,12 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
   @override
   void didUpdateWidget(covariant LiveDriverMap oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.activeRideId != widget.activeRideId) {
+      _didFitRoute = false;
+      _routePoints = [];
+      _toPickupPoints = [];
+      _routeMeta = null;
+    }
     if (oldWidget.activeRideId != widget.activeRideId ||
         oldWidget.showRequests != widget.showRequests ||
         oldWidget.shareLocation != widget.shareLocation) {
@@ -126,6 +136,14 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
         _position = pos;
         _mapError = null;
       });
+      if (!_centeredOnDriver && widget.activeRideId == null && _controller != null) {
+        _centeredOnDriver = true;
+        try {
+          await _controller!.animateCamera(
+            gmaps.CameraUpdate.newLatLngZoom(gmaps.LatLng(pos.latitude, pos.longitude), 15),
+          );
+        } catch (_) {}
+      }
       if (widget.shareLocation || widget.activeRideId != null) {
         try {
           await DriverApi.updateLocation(
@@ -246,7 +264,10 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
           }
         }
       }
-      await _fitBounds();
+      if (!_didFitRoute && (_routePoints.isNotEmpty || _toPickupPoints.isNotEmpty)) {
+        _didFitRoute = true;
+        await _fitBounds();
+      }
     } finally {
       _routeLoading = false;
     }
@@ -424,7 +445,22 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
               initialCameraPosition: gmaps.CameraPosition(target: _center, zoom: 14.2),
               onMapCreated: (controller) async {
                 _controller = controller;
-                await _fitBounds();
+                final pos = _position;
+                if (widget.activeRideId == null && pos != null) {
+                  _centeredOnDriver = true;
+                  try {
+                    await controller.animateCamera(
+                      gmaps.CameraUpdate.newLatLngZoom(gmaps.LatLng(pos.latitude, pos.longitude), 15),
+                    );
+                  } catch (_) {}
+                } else {
+                  await _fitBounds();
+                }
+              },
+              // The map lives inside a scrolling ListView: claim touch gestures so it can be
+              // panned / zoomed instead of the list swallowing every drag.
+              gestureRecognizers: {
+                Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
               },
               markers: _mapMarkers,
               polylines: _polylines,
@@ -434,7 +470,7 @@ class _LiveDriverMapState extends State<LiveDriverMap> {
               compassEnabled: true,
               mapToolbarEnabled: false,
               trafficEnabled: false,
-              buildingsEnabled: true,
+              buildingsEnabled: false,
               padding: EdgeInsets.only(bottom: 8 + bottomPad * 0.1, top: 8),
             ),
             // Legend
