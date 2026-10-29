@@ -1,45 +1,60 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
-
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
-.idea/
-
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
-
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
+# Dependencies
+node_modules/
 .dart_tool/
-.flutter-plugins-dependencies
+.packages
 .pub-cache/
 .pub/
-/build/
-/coverage/
 
-# Symbolication related
-app.*.symbols
+# Build output
+build/
+dist/
+coverage/
 
-# Obfuscation related
-app.*.map.json
+# Logs & temp
+*.log
+*.tmp
+*.swp
+*.lock
+*.bak
+logs/
 
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+# Environment files
+.env
+.env.local
+.env.*.local
+.env.example
+firebase-service-account.json
+
+# Android
+android/.gradle/
+android/app/build/
+android/local.properties
+android/key.properties
+*.jks
+*.keystore
+
+# iOS/macOS
+ios/Pods/
+ios/Runner/GeneratedPluginRegistrant.*
+ios/Flutter/Generated.xcconfig
+macos/Pods/
+macos/Flutter/GeneratedPluginRegistrant.*
+macos/Flutter/Generated.xcconfig
+
+# Xcode
+*.xcworkspace
+*.xcuserstate
+*.xcuserdatad*
+DerivedData/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+
+# IDE/editor
+.vscode/
+.idea/
+*.iml
+
+# OS-specific
+.DS_Store
+Thumbs.db

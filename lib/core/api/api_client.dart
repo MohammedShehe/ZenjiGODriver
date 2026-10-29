@@ -16,7 +16,13 @@ class ApiClient {
     defaultValue: 'https://zenjigo-backend.onrender.com/api/v1',
   );
 
-  static const Duration requestTimeout = Duration(seconds: 60);
+  static const Duration requestTimeout = Duration(seconds: 25);
+
+  /// Document/photo uploads on mobile data need far longer than normal requests.
+  static const Duration uploadTimeout = Duration(seconds: 120);
+
+  /// Optional hook: called once when the session can no longer be refreshed.
+  static void Function()? onSessionExpired;
 
   static Future<String?> get accessToken async => _token();
 
@@ -106,23 +112,30 @@ class ApiClient {
 
     Map<String, dynamic> decoded;
     try {
-      decoded = response.body.isEmpty
-          ? <String, dynamic>{}
-          : jsonDecode(response.body) as Map<String, dynamic>;
+      final parsed = response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body);
+      decoded = parsed is Map<String, dynamic> ? parsed : <String, dynamic>{'data': parsed};
     } catch (_) {
       throw Exception(FriendlyErrors.message('Invalid server response ${response.statusCode}'));
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300 || decoded['success'] == false) {
       final msg = (decoded['message'] ?? decoded['error'] ?? '').toString().trim();
-      if (msg.isNotEmpty) throw Exception(msg);
+      if (msg.isNotEmpty) throw Exception(FriendlyErrors.message(msg));
       throw Exception(FriendlyErrors.message('HTTP ${response.statusCode}'));
     }
 
     return decoded;
   }
 
-  static Future<bool> _tryRefresh() async {
+  static Future<bool>? _refreshInFlight;
+
+  /// Several timers (ride, chat, map) hit a 401 at the same moment. Refresh tokens rotate, so only one
+  /// refresh may run; everyone else waits for its result instead of racing and signing the driver out.
+  static Future<bool> _tryRefresh() {
+    return _refreshInFlight ??= _doRefresh().whenComplete(() => _refreshInFlight = null);
+  }
+
+  static Future<bool> _doRefresh() async {
     try {
       final rt = await _refreshToken();
       if (rt == null || rt.isEmpty) return false;
@@ -133,6 +146,11 @@ class ApiClient {
             body: jsonEncode({'refreshToken': rt}),
           )
           .timeout(requestTimeout);
+      if (res.statusCode == 401 || res.statusCode == 403) {
+        await clear();
+        onSessionExpired?.call();
+        return false;
+      }
       if (res.statusCode < 200 || res.statusCode >= 300) return false;
       final decoded = jsonDecode(res.body) as Map<String, dynamic>;
       final data = Map<String, dynamic>.from(decoded['data'] ?? decoded);

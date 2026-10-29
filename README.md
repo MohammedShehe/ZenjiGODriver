@@ -1,82 +1,173 @@
-# ZenjiGO Driver — Flutter
+# ZenjiGO Backend
 
-Flutter driver app aligned with the driver portal in `ZenjiGOWeb`.
+Production-oriented Node.js + Express + MySQL backend for the ZenjiGO **Rider**, **Driver**, and **Admin** applications.
 
-## Driver flow
+## Stack
+- Node.js 20+
+- Express 5
+- MySQL 8+
+- JWT access/refresh tokens
+- Email OTP via SMTP for rider, driver and admin verification
+- Cloudinary for images/documents
+- Firebase Admin / FCM for push notifications
+- Socket.IO for live driver location and chat
+- Helmet, CORS, rate limiting, validation, compression
+- Transactional MySQL operations for ride assignment and wallet accounting
 
-- Sign in using the registered email address only. No phone number is requested or phone verification performed. The app sends `email` and `purpose: "login"` to `POST /auth/driver/send-otp`, then sends `email` and `code` to `POST /auth/driver/login`. Empty or malformed email values are blocked by form validation. The backend must support email-only driver login on these existing endpoints.
-- Restore the authenticated driver profile.
-- Go online/offline through `PATCH /driver/online`.
-- Receive real requests by polling `GET /driver/ride-requests`; accept using `POST /driver/rides/:id/accept`.
-- Ride status actions follow the portal sequence: `arriving` → `arrived` → `started` → `completed`, through `PATCH /driver/rides/:id/status`.
-- During online availability and active rides, device GPS is read with the platform location APIs and sent to `POST /driver/location`.
-- The map uses the native Google Maps SDK and displays the driver's current position plus pickup/drop-off/request markers only when real coordinates are returned by the backend.
-- Finance, settlements, payout, profile, history and chat use the same `/api/v1` driver routes as the web portal.
+## 1. Configure
+Edit `.env`. The supplied values are examples only.
 
-## API base URL
-
-Set the backend URL at build/run time. It must be reachable from the device:
-
-```bash
-flutter pub get
-# Android emulator talking to backend on the host machine:
-flutter run --dart-define=ZENJIGO_API_URL=http://10.0.2.2:5000/api/v1
-# Physical Android device: use your computer's LAN IP, e.g. 192.168.x.x
-# iOS simulator: typically http://127.0.0.1:5000/api/v1
+Required database defaults:
+```text
+DB_HOST=localhost
+DB_PORT=3306
+DB_NAME=zenjigo
+DB_USER=root
+DB_PASSWORD=
 ```
 
-For production, use the deployed HTTPS API base, e.g. `--dart-define=ZENJIGO_API_URL=https://YOUR-BACKEND-HOST/api/v1`.
-The backend must allow the app's network origin where relevant and the URL must be reachable from the device. The code uses the same route paths as `ZenjiGOWeb/js/api.js`.
+You must replace the Twilio, Cloudinary, Firebase and JWT example values with your real credentials before production.
 
-## Google Maps and GPS
+## 2. Install
+```bash
+npm install
+```
 
-The web portal's Google Maps browser key is currently wired as the native map key in:
-- `android/app/src/main/AndroidManifest.xml`
-- `ios/Runner/AppDelegate.swift`
+## 3. Create all tables
+```bash
+npm run migrate
+```
+The migration creates `zenjigo` if it does not exist and creates all application tables. Existing data is not deleted by the migration.
 
-Google Cloud API keys may be restricted by platform. For a production app, create/authorize a native key with **Maps SDK for Android** and **Maps SDK for iOS** enabled, apply Android package/SHA restrictions and iOS bundle restrictions, and replace the key in those two files. Do not use an HTTP-referrer-only browser key for native apps. Enable location permission prompts in Android/iOS settings if the device has denied access. GPS sharing is best-effort while the device has a valid location fix and network connection.
+## 4. Create the first admin
+```bash
+npm run seed
+```
+The admin email/password come from `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD`.
 
-## Endpoints used
+**Immediately change the seed admin password and keep `.env` out of source control.**
 
-| Purpose | Endpoint |
-|---|---|
-| Send driver email OTP (email-only login) | `POST /auth/driver/send-otp` |
-| Login | `POST /auth/driver/login` |
-| Register driver + documents | `POST /driver/register` (multipart) |
-| Profile | `GET /driver/me` |
-| Online/offline | `PATCH /driver/online` |
-| Current location | `POST /driver/location` |
-| Ride requests | `GET /driver/ride-requests` |
-| Accept ride | `POST /driver/rides/:id/accept` |
-| Ride status | `PATCH /driver/rides/:id/status` |
-| Ride history | `GET /driver/rides?limit=50` |
-| Finance / earnings | `GET /driver/finance`, `GET /driver/earnings` |
-| Settlement | `GET/POST /driver/settlements`, `GET /driver/settlements/:id` |
-| Payout | `POST /driver/payout` |
-| Chat | `GET /driver/chat`, `POST /driver/chat/:id/messages` |
+## 5. Start
+Development:
+```bash
+npm run dev
+```
+Production:
+```bash
+npm start
+```
 
-## Login contract note
+Health check:
+`GET http://localhost:5000/health`
 
-This build intentionally removes phone verification from driver sign-in. If the backend login controller currently requires `phone` in `/auth/driver/login`, update its validation and driver lookup to authenticate by email plus OTP; the mobile client will not submit a phone number. Registration may still request a phone number as driver profile data, but it is not used for login verification.
+API base:
+`http://localhost:5000/api/v1`
 
-## Important verification note
+## Authentication
+Rider:
+1. `POST /auth/rider/send-otp`
+2. `POST /auth/rider/verify-otp`
+3. Use returned `accessToken` as `Authorization: Bearer <token>`
 
-This ZIP contains source code, not a signed release build. It was updated in this environment but could not be compiled or exercised against your deployed backend because Flutter tooling and live backend credentials were unavailable here. Before release, run `flutter pub get`, `flutter analyze`, and test each ride status transition with your staging backend. Payment-provider settlement, push notifications, and rider reporting still depend on the backend/provider being configured.
+Driver:
+1. `POST /driver/register` (multipart/form-data)
+2. Admin reviews the application.
+3. `POST /auth/driver/send-otp`
+4. `POST /auth/driver/login`
 
-## Driver authentication: email OTP only
+Admin:
+`POST /auth/admin/login`
 
-The driver app does not perform phone verification. Driver sign-in uses email OTP.
-During driver registration, a phone number may still be collected as a contact/profile
-field if required by the backend, but the app does not send an SMS OTP or require
-phone verification. Email verification remains enabled.
+Refresh:
+`POST /auth/refresh`
 
-## Live driver Earnings, Chat and Profile screens
+## Main API groups
 
-The Earnings screen reads `/driver/finance`, `/driver/earnings`, `/driver/rides`,
-and `/driver/settlements`, and submits payout requests through `/driver/payout`.
-The Chat screens use `/driver/chat`, `/driver/chat/support`, conversation messages,
-read receipts, and message sending endpoints. The Profile and Documents screens
-read `/driver/me` and `/driver/documents`. The app no longer seeds those screens
-with sample balances, messages, driver identity, vehicle data, document statuses,
-or fabricated rider reviews. Individual reviews are not currently exposed by the
-backend API and are therefore clearly identified as unavailable rather than faked.
+### Rider
+- `/rider/me`
+- `/rider/saved-locations`
+- `/rider/payment-methods`
+- `/rider/rides/quote`
+- `/rider/rides`
+- `/rider/wallet`
+- `/rider/notifications`
+- `/rider/chat`
+- `/rider/parcels`
+- `/rider/tour-packages`
+- `/rider/tours`
+- `/promos`
+
+### Driver
+- `/driver/register`
+- `/driver/me`
+- `/driver/documents`
+- `/driver/online`
+- `/driver/location`
+- `/driver/ride-requests`
+- `/driver/rides/:id/accept`
+- `/driver/rides/:id/status`
+- `/driver/earnings`
+- `/driver/payout`
+
+### Admin
+- `/admin/dashboard`
+- `/admin/riders`
+- `/admin/drivers`
+- `/admin/drivers/:id`
+- `/admin/drivers/:id/status`
+- `/admin/documents/:id/status`
+- `/admin/rides`
+- `/admin/promos`
+- `/admin/payments`
+- `/admin/payments/:id/complete`
+- `/admin/payouts`
+- `/admin/notifications`
+- `/admin/tour-packages`
+- `/admin/audit-logs`
+
+## Socket.IO
+Connect to the same host using the access token:
+```js
+io("http://localhost:5000", {
+  auth: { token: accessToken }
+});
+```
+
+Events:
+- `ride:join` `{ rideId }`
+- `ride:location` emitted to ride participants
+- `driver:location` `{ rideId, lat, lng, heading, speed }`
+- `chat:join` `{ conversationId }`
+- `chat:message` `{ conversationId, text, replyToId }`
+
+## Payments
+The project specification did not name a concrete mobile-money/card payment gateway. Therefore the backend includes a provider-neutral `payment_transactions` layer and wallet accounting, rather than pretending to implement a gateway that was not specified.
+
+`POST /rider/wallet/topup` creates a pending payment. A real provider webhook/adapter should mark it successful. Admin can complete a pending payment using `/admin/payments/:id/complete` for controlled/manual testing.
+
+Do not treat the manual completion endpoint as a production payment webhook. When you choose your real Tanzania payment provider, implement its signed webhook in a dedicated provider adapter.
+
+## Production checklist
+- Set `NODE_ENV=production`.
+- Replace all example secrets.
+- Use a dedicated MySQL user instead of root.
+- Put the API behind HTTPS/reverse proxy.
+- Restrict `CORS_ORIGINS` to actual app/web origins.
+- Use a real Firebase service account.
+- Configure Twilio Verify.
+- Configure Cloudinary.
+- Configure your actual payment gateway webhook before accepting real wallet money.
+- Use a process manager/container orchestration.
+- Enable MySQL backups and monitoring.
+- Rotate JWT/credential secrets periodically.
+- Never commit `.env` or Firebase service-account JSON.
+
+## Driver authentication and registration fixes
+
+- Driver sign-in is email OTP only: `POST /api/v1/auth/driver/send-otp` with `{ email, purpose: "login" }`, then `POST /api/v1/auth/driver/login` with `{ email, code }`. Phone is not required for sign-in.
+- Driver registration email verification is persisted when `/auth/driver/verify-otp` succeeds. Final registration accepts that verified status for 24 hours, so the OTP does not need to remain unexpired while the applicant completes the other steps.
+- The web registration flow remains compatible: it may submit `emailOtpCode` at final submission if it has not verified it through the separate endpoint.
+- Driver database rows are created only after required document uploads succeed, inside the database transaction in `src/services/driver.service.js`.
+
+After replacing backend files, restart the Node server. Do not distribute `.env` or production credentials in source archives.
+

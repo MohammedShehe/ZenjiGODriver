@@ -34,6 +34,7 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
   // ---- server state ----------------------------------------------------------------
   Map<String, dynamic>? _ride;
   Timer? _ridePoll;
+  bool _postingLocation = false;
   bool _busy = false;
   bool _finished = false;
 
@@ -212,22 +213,26 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
     _maybePrompts(here);
 
     // Share the live position with the server (and therefore the rider) every ~3 s.
-    if (DateTime.now().difference(_lastPost).inMilliseconds >= 3000) {
+    if (!_postingLocation && DateTime.now().difference(_lastPost).inMilliseconds >= 3000) {
       _lastPost = DateTime.now();
+      _postingLocation = true;
       DriverApi.updateLocation(
         p.latitude,
         p.longitude,
         heading: p.heading.isFinite && p.heading >= 0 ? p.heading : null,
         speed: p.speed.isFinite && p.speed >= 0 ? p.speed : null,
         rideId: widget.rideId,
-      ).catchError((_) {});
+      ).catchError((_) {}).whenComplete(() => _postingLocation = false);
     }
   }
 
   // ---- server polling --------------------------------------------------------------
+  bool _loadingRide = false;
+
   Future<void> _loadRide() async {
     final id = widget.rideId;
-    if (id == null || _finished) return;
+    if (id == null || _finished || _loadingRide) return;
+    _loadingRide = true;
     try {
       final r = await DriverApi.ride(id);
       if (!mounted) return;
@@ -247,7 +252,10 @@ class _ActiveRideScreenState extends State<ActiveRideScreen> {
         _fitOverview();
       }
       _afterRideUpdate(prevStatus, prevReached);
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      _loadingRide = false;
+    }
   }
 
   void _afterRideUpdate(String prevStatus, bool prevReached) {

@@ -734,7 +734,7 @@ class _DocumentChangeRequestScreenState extends State<DocumentChangeRequestScree
         req.fields['documentType'] = docType;
         req.fields['reason'] = reason.text.trim();
         req.files.add(await http.MultipartFile.fromPath('document', filePath!));
-        final streamed = await req.send().timeout(ApiClient.requestTimeout);
+        final streamed = await req.send().timeout(ApiClient.uploadTimeout);
         final body = await streamed.stream.bytesToString();
         if (streamed.statusCode < 200 || streamed.statusCode >= 300) {
           // keep soft success from profile change fallback

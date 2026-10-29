@@ -341,7 +341,7 @@ class DriverApi {
     req.headers['Authorization'] = 'Bearer $token';
     req.headers['Accept'] = 'application/json';
     req.files.add(await http.MultipartFile.fromPath('photo', path));
-    final streamed = await req.send().timeout(ApiClient.requestTimeout);
+    final streamed = await req.send().timeout(ApiClient.uploadTimeout);
     final body = await streamed.stream.bytesToString();
     Map<String, dynamic> data = {};
     try {

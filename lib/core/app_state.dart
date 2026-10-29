@@ -122,9 +122,12 @@ class AppState extends ChangeNotifier {
     _ridePoll = null;
   }
 
+  bool _pollingRides = false;
+
   Future<void> _pollRides() async {
-    if (!online || !authenticated) return;
+    if (!online || !authenticated || _pollingRides) return;
     if (activeRideId != null) return; // busy with a ride: don't surface new requests
+    _pollingRides = true;
     try {
       final result = await DriverApi.requests();
       if (result['restricted'] == true) return;
@@ -147,7 +150,10 @@ class AppState extends ChangeNotifier {
       pendingRideRequest = next;
       notifyListeners();
       onRideRequest?.call(next);
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      _pollingRides = false;
+    }
   }
 
 
